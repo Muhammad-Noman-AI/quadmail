@@ -1,0 +1,11 @@
+From: Weird <weird@example.com>
+To: noman@quadgentics.com
+Subject: =?utf-8?B?!!!notbase64?=
+Message-ID: <bad-1@example.com>
+Content-Type: multipart/mixed; boundary="never-closed"
+
+--never-closed
+Content-Type: text/plain
+Content-Transfer-Encoding: base64
+
+%%not base64ÿþ

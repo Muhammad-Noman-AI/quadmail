@@ -1,0 +1,2 @@
+# Raw mail fixtures must keep their exact bytes (CRLF line endings).
+* -text
