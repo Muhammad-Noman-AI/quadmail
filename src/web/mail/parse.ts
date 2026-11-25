@@ -89,6 +89,17 @@ function postJson(path: string, body: unknown): Promise<Response> {
   return request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 }
 
+/** Fired on window after a message is indexed, so open lists can show its snippet without a reload. */
+export const INDEXED_EVENT = "qm:indexed";
+
+export interface IndexedDetail {
+  id: string;
+  from: ParsedMessage["from"];
+  subject: string | null;
+  snippet: string;
+  hasAttachments: boolean;
+}
+
 /**
  * Fetch /api/messages/:id/raw, parse it, upload attachments and post the index fields back
  * (POST /api/messages/:id/parsed). Returns the parsed message for immediate display.
@@ -130,6 +141,8 @@ export async function indexMessage(id: string): Promise<ParsedMessage> {
     await postJson(`${base}/parse-failed`, { error: err instanceof Error ? err.message : "Indexing failed" }).catch(() => undefined);
     throw err;
   }
+  const detail: IndexedDetail = { id, from: parsed.from, subject: parsed.subject, snippet: parsed.snippet, hasAttachments: parsed.attachments.some((a) => !a.isInline) };
+  window.dispatchEvent(new CustomEvent<IndexedDetail>(INDEXED_EVENT, { detail }));
   return parsed;
 }
 

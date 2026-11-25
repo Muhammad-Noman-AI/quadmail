@@ -4,7 +4,7 @@ import { api, type Label, type Me } from "../api";
 import { Composer } from "../compose/Composer";
 import { replyInit, type ComposeInit, type ReplyMode } from "../compose/prepare";
 import { loadContent } from "../mail/content";
-import { processPending } from "../mail/parse";
+import { INDEXED_EVENT, processPending, type IndexedDetail } from "../mail/parse";
 import { Reader } from "../reader/Reader";
 import { navigate, useRoute, viewHash } from "../route";
 import { applyPatch, patchMessages, type MessagePatch } from "./actions";
@@ -72,6 +72,23 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
   }, [refreshMeta]);
 
   useEffect(reload, [reload]);
+
+  // A message indexed in the background or on open: show its snippet now instead of "Not indexed yet".
+  useEffect(() => {
+    const onIndexed = (event: Event) => {
+      const d = (event as CustomEvent<IndexedDetail>).detail;
+      setPage((current) => ({
+        ...current,
+        items: current.items.map((m) =>
+          m.id === d.id
+            ? { ...m, parseStatus: "done", snippet: d.snippet, subject: d.subject ?? m.subject, from: d.from ?? m.from, hasAttachments: m.hasAttachments || d.hasAttachments }
+            : m,
+        ),
+      }));
+    };
+    window.addEventListener(INDEXED_EVENT, onIndexed);
+    return () => window.removeEventListener(INDEXED_EVENT, onIndexed);
+  }, []);
 
   async function loadMore() {
     if (!page.nextCursor) return;
