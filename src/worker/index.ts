@@ -6,6 +6,7 @@ import { dispatch, type Route } from "./router";
 import { authRoutes } from "./routes/auth";
 import { inboundRoutes } from "./routes/inbound";
 import { mailRoutes } from "./routes/mail";
+import { sendRoutes } from "./routes/send";
 import { handleScheduled } from "./scheduled";
 
 const routes: Route[] = [
@@ -20,6 +21,7 @@ const routes: Route[] = [
   ...authRoutes,
   ...mailRoutes,
   ...inboundRoutes,
+  ...sendRoutes,
 ];
 
 export default {

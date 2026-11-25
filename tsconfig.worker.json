@@ -3,7 +3,7 @@
   "compilerOptions": {
     "composite": true,
     "tsBuildInfoFile": "./node_modules/.tmp/worker.tsbuildinfo",
-    "lib": ["ES2023"],
+    "lib": ["ES2023", "ESNext.TypedArrays"],
     "types": []
   },
   "include": ["src/worker", "src/shared"]

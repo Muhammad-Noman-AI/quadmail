@@ -117,7 +117,7 @@ export function sanitizeEmailHtml(html: string, options: SanitizeOptions): Sanit
   return { html: clean, blockedRemote: options.allowRemote ? 0 : counter.blocked };
 }
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 

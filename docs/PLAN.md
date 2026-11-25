@@ -22,7 +22,7 @@ Verified 2026-11-19 against official docs. Source pages are named in each row.
 4. **Email Routing docs moved** under `/email-service/`. The code will link to the new paths.
 5. **Vercel cron runs late by up to 59 minutes** and only once a day. That is fine for reconcile and retention jobs.
 6. **R2 presigned URLs do not work on custom domains.** The browser talks to `<account>.r2.cloudflarestorage.com` directly. The bucket needs a CORS rule for `https://mail.DOMAIN` (added to SETUP.md, plus a script).
-7. **Resend custom headers:** the `headers` field is documented, but `In-Reply-To`, `References` and `Message-ID` are not listed by name. Resend may replace `Message-ID`. Phase 5 tests this before relying on it. Fallback: store the Message-ID that Resend reports.
+7. **Resend custom headers:** the `headers` field is documented, but `In-Reply-To`, `References` and `Message-ID` are not listed by name. Resend may replace `Message-ID`. Phase 5 decision: send `In-Reply-To` and `References`, do not set `Message-ID`, and store the Message-ID that Resend reports in its webhooks (`data.message_id`) so replies thread. To confirm on the first real send: Gmail shows the reply in the same conversation.
 8. **Resend Free allows only one webhook endpoint.** That is enough (`/api/webhooks/resend`).
 9. **Not yet verified:** rate limits on the Cloudflare D1 REST API. This is checked in Phase 2. If they are too tight, the repository layer switches to a small gateway Worker with a D1 binding (the swap already planned in section 5).
 10. The Vercel fair-use page could not be read (a local WebFetch hook crashed). The non-commercial wording comes from the Terms of Service.

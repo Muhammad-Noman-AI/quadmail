@@ -13,6 +13,12 @@ export function capUtf8(text: string, maxBytes: number): string {
   return decoder.decode(bytes.subarray(0, end));
 }
 
+/** Replace ASCII control characters (CR, LF, NUL...) with spaces: for values that end up in mail headers. */
+export function stripControlChars(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/[\u0000-\u001f\u007f]/g, " ");
+}
+
 export function capChars(text: string, maxChars: number): string {
   return text.length <= maxChars ? text : text.slice(0, maxChars);
 }

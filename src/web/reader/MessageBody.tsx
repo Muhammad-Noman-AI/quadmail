@@ -1,20 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { MessageDetail, ParsedMessage } from "../../shared/types";
 import { formatBytes } from "../format";
-import { indexMessage, parseRaw } from "../mail/parse";
+import { loadContent } from "../mail/content";
 import { frameDocument, inlineImageMap, plainTextToHtml, sanitizeEmailHtml } from "./sanitize";
 
 const SENDER_KEY = "qm:remote-ok:";
 
 function senderAllowsRemote(address: string | undefined): boolean {
   return !!address && localStorage.getItem(SENDER_KEY + address.toLowerCase()) === "1";
-}
-
-async function loadParsed(message: MessageDetail): Promise<ParsedMessage> {
-  if (message.parseStatus !== "done") return indexMessage(message.id);
-  const response = await fetch(`/api/messages/${message.id}/raw`, { credentials: "same-origin" });
-  if (!response.ok) throw new Error(`Could not load the message (${response.status})`);
-  return parseRaw(await response.arrayBuffer());
 }
 
 export function MessageBody({ message }: { message: MessageDetail }) {
@@ -25,13 +18,12 @@ export function MessageBody({ message }: { message: MessageDetail }) {
 
   useEffect(() => {
     let active = true;
-    loadParsed(message)
+    loadContent(message)
       .then((result) => active && setParsed(result))
       .catch((err: unknown) => {
         if (!active) return;
         const text = err instanceof Error ? err.message : String(err);
-        // Until Phase 3 lands, the parser module is a stub that throws "implemented in Phase 3".
-        setFailure(/implemented in Phase 3/.test(text) ? "The message parser is not available yet (Phase 3)." : text);
+        setFailure(text);
       });
     return () => {
       active = false;
@@ -57,7 +49,7 @@ export function MessageBody({ message }: { message: MessageDetail }) {
   }
   if (!rendered) return <p className="px-4 pb-4 text-sm text-neutral-400">Loading message…</p>;
 
-  const files = parsed!.attachments.filter((a) => !a.isInline);
+  const files = (message.bodySource === "body" ? message.attachments : parsed!.attachments).filter((a) => !a.isInline);
   return (
     <div className="space-y-2 px-2 pb-3">
       {rendered.blocked > 0 && (

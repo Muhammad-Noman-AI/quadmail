@@ -3,6 +3,7 @@ import type { Folder, MessageDetail, MessageSummary } from "../../shared/types";
 import { api, ApiError, type Label } from "../api";
 import { displayAddress, longDate } from "../format";
 import { navigate, viewHash, type View } from "../route";
+import type { ReplyMode } from "../compose/prepare";
 import type { MessagePatch } from "../shell/actions";
 import { MessageBody } from "./MessageBody";
 
@@ -13,6 +14,7 @@ export function Reader({
   labels,
   onAct,
   onNotice,
+  onReply,
 }: {
   messageId: string;
   summary: MessageSummary | null;
@@ -20,6 +22,7 @@ export function Reader({
   labels: Label[];
   onAct: (ids: string[], patch: MessagePatch) => void;
   onNotice: (message: string) => void;
+  onReply: (message: MessageDetail, mode: ReplyMode) => void;
 }) {
   const [thread, setThread] = useState<MessageDetail[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +68,13 @@ export function Reader({
     <article className="flex min-w-0 flex-1 flex-col bg-white dark:bg-neutral-900">
       <div className="flex min-h-11 flex-wrap items-center gap-1 border-b border-neutral-200 px-3 py-1.5 dark:border-neutral-800">
         <a href={back} className={`${button} md:hidden`}>← Back</a>
+        {current && (
+          <>
+            <button className={`${button} font-medium`} onClick={() => onReply(current, "reply")}>Reply</button>
+            <button className={button} onClick={() => onReply(current, "replyAll")}>Reply all</button>
+            <button className={button} onClick={() => onReply(current, "forward")}>Forward</button>
+          </>
+        )}
         <button className={button} onClick={() => move("archive")}>Archive</button>
         <button className={button} onClick={() => move("trash")}>Delete</button>
         <button className={button} onClick={() => move("spam")}>Spam</button>
@@ -119,7 +129,14 @@ export function Reader({
                           </span>
                         )}
                       </span>
-                      <span className="shrink-0 text-xs text-neutral-500">{longDate(message.receivedAt)}</span>
+                      <span className="shrink-0 text-right text-xs text-neutral-500">
+                        {longDate(message.receivedAt)}
+                        {message.sendStatus && (
+                          <span className={`block ${["bounced", "complained", "failed"].includes(message.sendStatus) ? "font-medium text-red-600" : ""}`}>
+                            {message.sendStatus === "bounced" ? "Bounced: address suppressed" : message.sendStatus === "complained" ? "Marked as spam by recipient" : message.sendStatus}
+                          </span>
+                        )}
+                      </span>
                     </button>
                     {open && <MessageBody message={message} />}
                   </li>

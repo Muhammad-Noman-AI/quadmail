@@ -31,12 +31,14 @@ export function Sidebar({
   labels,
   counts,
   onLabelsChanged,
+  onCompose,
   className = "",
 }: {
   view: View;
   labels: Label[];
   counts: Record<string, number>;
   onLabelsChanged: () => void;
+  onCompose: () => void;
   className?: string;
 }) {
   const [adding, setAdding] = useState(false);
@@ -63,7 +65,7 @@ export function Sidebar({
 
   return (
     <nav className={`w-56 shrink-0 flex-col gap-4 overflow-y-auto border-r border-neutral-200 p-3 dark:border-neutral-800 ${className}`}>
-      <button disabled title="Compose arrives in Phase 5" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white opacity-50">
+      <button onClick={onCompose} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
         Compose
       </button>
       <ul className="space-y-0.5">

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import type { MessageSummary } from "../../shared/types";
+import type { MessageDetail, MessageSummary, SendingInfo } from "../../shared/types";
 import { api, type Label, type Me } from "../api";
+import { Composer } from "../compose/Composer";
+import { replyInit, type ComposeInit, type ReplyMode } from "../compose/prepare";
+import { loadContent } from "../mail/content";
 import { processPending } from "../mail/parse";
 import { Reader } from "../reader/Reader";
 import { navigate, useRoute, viewHash } from "../route";
@@ -8,6 +11,12 @@ import { applyPatch, patchMessages, type MessagePatch } from "./actions";
 import { MessageList } from "./MessageList";
 import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
+
+interface ComposeState {
+  /** Remounts the composer for each new message. */
+  key: number;
+  init: ComposeInit | null;
+}
 
 interface Page {
   items: MessageSummary[];
@@ -23,6 +32,7 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
   const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [searchText, setSearchText] = useState(view.kind === "search" ? view.query : "");
+  const [compose, setCompose] = useState<ComposeState | null>(null);
   const viewKey = viewHash(view);
 
   const refreshMeta = useCallback(() => {
@@ -90,6 +100,38 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
     }
   }
 
+  const openCompose = (init: ComposeInit | null) => setCompose({ key: Date.now(), init });
+
+  async function reply(message: MessageDetail, mode: ReplyMode) {
+    try {
+      const [sending, content] = await Promise.all([api<SendingInfo>("/api/sending"), loadContent(message)]);
+      openCompose(replyInit(message, content, mode, sending.identities));
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Could not start the reply");
+    }
+  }
+
+  // Opening a message in Drafts edits it instead of reading it.
+  const draftRoute = view.kind === "folder" && view.folder === "drafts" ? messageId : null;
+
+  function closeComposer() {
+    setCompose(null);
+    if (draftRoute) navigate(viewHash(view));
+  }
+
+  function composerSent() {
+    closeComposer();
+    setNotice("Message sent.");
+    reload();
+    refreshMeta();
+  }
+
+  const composerChanged = useCallback(() => {
+    refreshMeta();
+    if (view.kind === "folder" && view.folder === "drafts") reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewKey, refreshMeta, reload]);
+
   async function signOut() {
     await api("/api/auth/logout", { method: "POST" }).catch(() => {});
     onSignedOut();
@@ -120,6 +162,9 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
             className="w-full max-w-2xl rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-blue-500 dark:border-neutral-800 dark:bg-neutral-900"
           />
         </form>
+        <button onClick={() => openCompose(null)} className="rounded-lg bg-blue-600 px-3 py-1 text-sm font-medium text-white md:hidden">
+          Compose
+        </button>
         <span className="hidden text-sm text-neutral-500 sm:inline">{me.email}</span>
         <button onClick={signOut} className="rounded-lg px-2 py-1 text-sm text-neutral-600 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-800">
           Sign out
@@ -136,7 +181,14 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
       )}
 
       <div className="flex min-h-0 flex-1">
-        <Sidebar view={view} labels={labels} counts={counts} onLabelsChanged={refreshMeta} className={messageId ? "hidden lg:flex" : "hidden md:flex"} />
+        <Sidebar
+          view={view}
+          labels={labels}
+          counts={counts}
+          onLabelsChanged={refreshMeta}
+          onCompose={() => openCompose(null)}
+          className={messageId || compose ? "hidden lg:flex" : "hidden md:flex"}
+        />
         {view.kind === "settings" ? (
           <Settings me={me} onChanged={onMeChanged} onSignedOut={onSignedOut} />
         ) : (
@@ -151,10 +203,19 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
               onLoadMore={loadMore}
               onAct={act}
               onRefresh={reload}
-              className={messageId ? "hidden md:flex" : "flex"}
+              className={messageId || compose ? "hidden md:flex" : "flex"}
             />
-            {messageId ? (
-              <Reader key={messageId} messageId={messageId} summary={selected} view={view} labels={labels} onAct={act} onNotice={setNotice} />
+            {compose || draftRoute ? (
+              <Composer
+                key={compose ? compose.key : draftRoute!}
+                draftId={compose ? null : draftRoute}
+                init={compose?.init ?? null}
+                onClose={closeComposer}
+                onSent={composerSent}
+                onChanged={composerChanged}
+              />
+            ) : messageId ? (
+              <Reader key={messageId} messageId={messageId} summary={selected} view={view} labels={labels} onAct={act} onNotice={setNotice} onReply={reply} />
             ) : (
               <div className="hidden flex-1 items-center justify-center text-sm text-neutral-400 md:flex">Select a message to read it.</div>
             )}

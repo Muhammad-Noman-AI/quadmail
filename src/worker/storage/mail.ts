@@ -1,5 +1,5 @@
 // Track B repository layer over D1 for reading and organising mail. Parameterised SQL only.
-import type { Address, AttachmentMeta, Folder, MessageDetail, MessageSummary } from "../../shared/types";
+import type { Address, AttachmentMeta, Folder, MessageDetail, MessageSummary, SendStatus } from "../../shared/types";
 
 /** D1 allows 100 bound parameters per statement; keep id lists well under it. */
 const ID_CHUNK = 90;
@@ -21,17 +21,20 @@ export interface MessageRow {
   has_attachments: number;
   parse_status: "pending" | "done" | "failed";
   label_ids: string | null;
+  send_status: SendStatus | null;
   message_id_hdr?: string | null;
+  bcc_json?: string | null;
+  html_key?: string | null;
   in_reply_to?: string | null;
   references_json?: string | null;
   auth_results?: string | null;
 }
 
 const SUMMARY_COLUMNS = `m.id, m.thread_id, m.folder, m.direction, m.from_addr, m.from_name, m.to_json, m.cc_json,
-  m.subject, m.snippet, m.received_at, m.is_read, m.is_starred, m.has_attachments, m.parse_status,
+  m.subject, m.snippet, m.received_at, m.is_read, m.is_starred, m.has_attachments, m.parse_status, m.send_status,
   (SELECT group_concat(label_id) FROM message_labels ml WHERE ml.message_id = m.id) AS label_ids`;
 
-const DETAIL_COLUMNS = `${SUMMARY_COLUMNS}, m.message_id_hdr, m.in_reply_to, m.references_json, m.auth_results`;
+const DETAIL_COLUMNS = `${SUMMARY_COLUMNS}, m.message_id_hdr, m.in_reply_to, m.references_json, m.auth_results, m.bcc_json, m.html_key`;
 
 function parseJson<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback;
@@ -71,6 +74,7 @@ export function toSummary(row: MessageRow): MessageSummary {
     hasAttachments: row.has_attachments === 1,
     parseStatus: row.parse_status,
     labelIds: row.label_ids ? row.label_ids.split(",") : [],
+    sendStatus: row.send_status,
   };
 }
 
@@ -78,6 +82,8 @@ function toDetail(row: MessageRow, attachments: AttachmentMeta[]): MessageDetail
   return {
     ...toSummary(row),
     cc: addresses(row.cc_json),
+    bcc: addresses(row.bcc_json),
+    bodySource: row.html_key ? "body" : "raw",
     messageIdHeader: row.message_id_hdr ?? null,
     inReplyTo: row.in_reply_to ?? null,
     references: parseJson<string[]>(row.references_json, []),

@@ -119,6 +119,10 @@ export function MessageList({
                 {message.subject || "(no subject)"}
               </div>
               <div className="flex items-center gap-1 truncate text-xs text-neutral-500">
+                {message.folder === "drafts" && <span className="rounded bg-red-100 px-1 text-[10px] text-red-700 dark:bg-red-950 dark:text-red-300">Draft</span>}
+                {(message.sendStatus === "bounced" || message.sendStatus === "complained" || message.sendStatus === "failed") && (
+                  <span className="rounded bg-red-100 px-1 text-[10px] text-red-700 dark:bg-red-950 dark:text-red-300">{message.sendStatus === "failed" && message.folder === "drafts" ? "Not sent" : message.sendStatus}</span>
+                )}
                 {message.labelIds.map((id) => labelName.get(id)).filter(Boolean).map((l) => (
                   <span key={l!.id} className="rounded px-1 text-[10px] text-white" style={{ background: l!.color ?? "#9ca3af" }}>{l!.name}</span>
                 ))}
