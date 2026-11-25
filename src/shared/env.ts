@@ -14,6 +14,11 @@ export const envSchema = z.object({
   MAIL_PROVIDER: z.enum(["resend", "cloudflare"]),
   RESEND_API_KEY: z.string().startsWith("re_").optional(),
   RESEND_WEBHOOK_SECRET: z.string().startsWith("whsec_").optional(),
+  /** 32 random bytes, base64. Encrypts TOTP secrets at rest. Required before enabling 2FA. */
+  TOTP_ENC_KEY: z
+    .string()
+    .regex(/^[A-Za-z0-9+/]{43}=$/, "must be 32 bytes, base64-encoded")
+    .optional(),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
