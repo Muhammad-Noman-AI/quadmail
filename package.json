@@ -14,7 +14,9 @@
     "db:migrate:local": "wrangler d1 migrations apply quadmail --local",
     "db:migrate:remote": "wrangler d1 migrations apply quadmail --remote",
     "smoke:local": "bash scripts/smoke.sh --local",
-    "smoke:remote": "bash scripts/smoke.sh --remote"
+    "smoke:remote": "bash scripts/smoke.sh --remote",
+    "owner:password": "node scripts/set-owner-password.ts",
+    "seed:local": "node scripts/seed-local.ts"
   },
   "dependencies": {
     "dompurify": "^3.5.0",
@@ -34,6 +36,7 @@
     "eslint": "^10.15.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.14.0",
+    "jsdom": "^31.0.1",
     "tailwindcss": "^4.3.5",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.74.0",

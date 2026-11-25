@@ -1,22 +1,25 @@
-import { useEffect, useState } from "react";
-
-type Health = "checking" | "ok" | "error";
+import { useCallback, useEffect, useState } from "react";
+import { api, UNAUTHORIZED_EVENT, type Me } from "./api";
+import { Login } from "./auth/Login";
+import { Shell } from "./shell/Shell";
 
 export function App() {
-  const [health, setHealth] = useState<Health>("checking");
+  const [me, setMe] = useState<Me | null | undefined>(undefined);
 
-  useEffect(() => {
-    fetch("/api/health")
-      .then((response) => setHealth(response.ok ? "ok" : "error"))
-      .catch(() => setHealth("error"));
+  const loadMe = useCallback(() => {
+    api<Me>("/api/me")
+      .then(setMe)
+      .catch(() => setMe(null));
   }, []);
 
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-neutral-950 text-neutral-100">
-      <div className="text-center">
-        <h1 className="text-2xl font-semibold">QuadMail</h1>
-        <p className="mt-2 text-sm text-neutral-400">API: {health}</p>
-      </div>
-    </main>
-  );
+  useEffect(() => {
+    loadMe();
+    const onUnauthorized = () => setMe(null);
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, [loadMe]);
+
+  if (me === undefined) return <div className="flex min-h-screen items-center justify-center text-sm text-neutral-500">Loading…</div>;
+  if (me === null) return <Login onSignedIn={loadMe} />;
+  return <Shell me={me} onSignedOut={() => setMe(null)} onMeChanged={loadMe} />;
 }

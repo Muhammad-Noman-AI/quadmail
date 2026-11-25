@@ -1,0 +1,19 @@
+# Security headers for static assets (the SPA shell and its JS/CSS).
+# /api/* responses come from the Worker and set their own headers (src/worker/auth/respond.ts).
+# Docs: https://developers.cloudflare.com/workers/static-assets/headers/
+# Note: a header set by two matching rules is joined with commas, so each header appears once.
+#
+# CSP notes: email bodies render in <iframe sandbox srcdoc>, which inherits this policy AND applies
+# its own stricter meta CSP. 'unsafe-inline' for styles is needed for email CSS; scripts stay 'self'.
+# img-src allows https:/http: only so the user's "Load images" choice can work; the frame's own
+# CSP blocks remote images until then.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' data: https:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+  Strict-Transport-Security: max-age=63072000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  X-Frame-Options: DENY
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
