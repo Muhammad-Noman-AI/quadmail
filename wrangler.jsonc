@@ -10,7 +10,7 @@
   "triggers": { "crons": ["17 3 * * *"] },
   // Non-secret config. Secrets (RESEND_API_KEY, RESEND_WEBHOOK_SECRET) go in .dev.vars locally and `wrangler secret put` in production.
   "vars": {
-    "APP_URL": "http://localhost:5173",
+    "APP_URL": "https://quadmail.nomanu222555.workers.dev",
     "OWNER_EMAIL": "noman@quadgentics.com",
     "ALLOWED_SENDING_DOMAINS": "quadgentics.com",
     "DAILY_SEND_LIMIT": "90",
