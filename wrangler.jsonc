@@ -13,6 +13,14 @@
     "ALLOWED_SENDING_DOMAINS": "quadgentics.com",
     "DAILY_SEND_LIMIT": "90",
     "MAIL_PROVIDER": "resend"
-  }
-  // D1 and R2 bindings are added in Phase 2.
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "quadmail",
+      "database_id": "69b58cdf-eb43-4b1e-a83d-ef2be3433f70",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "MAIL", "bucket_name": "quadmail-mail" }]
 }

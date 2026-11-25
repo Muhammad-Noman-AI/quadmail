@@ -23,4 +23,13 @@ pnpm check                       # typecheck + lint + tests
 
 ## Status
 
-Phase 1 (scaffold) done. Next: Phase 2 (D1 schema, R2 bucket).
+Phases 1–2 done (scaffold; D1 schema + FTS5, R2 bucket). Next: Phase 3 (inbound) and Phase 4 (auth + read UI).
+
+## Database
+
+```bash
+pnpm db:migrate:local    # apply migrations to the local Miniflare D1
+pnpm db:migrate:remote   # apply migrations to Cloudflare D1
+pnpm smoke:local         # R2 put/get + D1 insert/FTS/delete against local state
+pnpm smoke:remote        # same, against the real bucket and database
+```
