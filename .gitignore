@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.env
+*.log
+.reticle-setup-crash.log
+# Reference copy of Mailflare (AGPL); not part of this project
+mailflare/

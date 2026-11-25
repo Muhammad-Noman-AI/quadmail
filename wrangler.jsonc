@@ -1,0 +1,18 @@
+{
+  // Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "quadmail",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "assets": { "not_found_handling": "single-page-application", "run_worker_first": ["/api/*"] },
+  "observability": { "enabled": true },
+  // Non-secret config. Secrets (RESEND_API_KEY, RESEND_WEBHOOK_SECRET) go in .dev.vars locally and `wrangler secret put` in production.
+  "vars": {
+    "APP_URL": "http://localhost:5173",
+    "OWNER_EMAIL": "noman@quadgentics.com",
+    "ALLOWED_SENDING_DOMAINS": "quadgentics.com",
+    "DAILY_SEND_LIMIT": "90",
+    "MAIL_PROVIDER": "resend"
+  }
+  // D1 and R2 bindings are added in Phase 2.
+}
