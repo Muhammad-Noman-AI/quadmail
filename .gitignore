@@ -7,3 +7,6 @@ dist/
 .reticle-setup-crash.log
 # Reference copy of Mailflare (AGPL); not part of this project
 mailflare/
+
+# Agent worktrees
+.claude/

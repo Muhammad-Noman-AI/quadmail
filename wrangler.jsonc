@@ -6,6 +6,8 @@
   "compatibility_date": "2026-11-01",
   "assets": { "not_found_handling": "single-page-application", "run_worker_first": ["/api/*"] },
   "observability": { "enabled": true },
+  // Daily maintenance (reconcile, reprocess, retention). Free plan allows 5 cron triggers per account.
+  "triggers": { "crons": ["17 3 * * *"] },
   // Non-secret config. Secrets (RESEND_API_KEY, RESEND_WEBHOOK_SECRET) go in .dev.vars locally and `wrangler secret put` in production.
   "vars": {
     "APP_URL": "http://localhost:5173",
