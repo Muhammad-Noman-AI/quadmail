@@ -23,7 +23,7 @@ pnpm check                       # typecheck + lint + tests
 
 ## Status
 
-Phases 1–2 done (scaffold; D1 schema + FTS5, R2 bucket). Next: Phase 3 (inbound) and Phase 4 (auth + read UI).
+Phases 1–4 done: scaffold, D1 + R2, inbound pipeline, auth + read UI. Next: Phase 5 (sending).
 
 ## Database
 

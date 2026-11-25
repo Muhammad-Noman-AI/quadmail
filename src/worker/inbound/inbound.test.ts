@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { contentDisposition } from "../routes/inbound";
 import { attachmentKey, idFromRawKey, rawKey } from "../storage/inbound";
 import { monthPrefixes } from "./reconcile";
-import { capUtf8 } from "./text";
+import { capUtf8 } from "../../shared/text";
 
 describe("R2 keys", () => {
   it("builds and reads raw keys", () => {

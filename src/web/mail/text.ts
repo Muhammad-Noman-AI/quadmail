@@ -1,16 +1,8 @@
-// Text helpers for building the search index in the browser. capUtf8 mirrors src/worker/inbound/text.ts.
+// Text helpers for building the search index in the browser.
+import { capUtf8 } from "../../shared/text";
 import { SEARCH_TEXT_MAX_BYTES, SNIPPET_MAX_CHARS } from "../../shared/types";
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-
-export function capUtf8(text: string, maxBytes: number): string {
-  const bytes = encoder.encode(text);
-  if (bytes.byteLength <= maxBytes) return text;
-  let end = maxBytes;
-  while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--;
-  return decoder.decode(bytes.subarray(0, end));
-}
+export { capUtf8 };
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 

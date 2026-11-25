@@ -1,4 +1,5 @@
 import { parseConfig } from "../shared/env";
+import { withApiHeaders } from "./auth/respond";
 import { json } from "./http";
 import { handleEmail } from "./inbound/email";
 import { dispatch, type Route } from "./router";
@@ -22,7 +23,8 @@ const routes: Route[] = [
 ];
 
 export default {
-  fetch: (request, env, ctx) => dispatch(routes, request, env, ctx),
+  // Every /api response (all tracks, errors included) gets the API security headers.
+  fetch: async (request, env, ctx) => withApiHeaders(await dispatch(routes, request, env, ctx)),
   email: handleEmail,
   scheduled: handleScheduled,
 } satisfies ExportedHandler<Env>;

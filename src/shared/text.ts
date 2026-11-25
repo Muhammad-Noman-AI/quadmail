@@ -1,5 +1,4 @@
-// Text caps used when storing browser-supplied index fields. Mirrors src/web/mail/text.ts
-// (src/shared is outside Track A's ownership; consolidate there after the merge).
+// Text caps shared by the browser (index building) and the Worker (storing browser-supplied fields).
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

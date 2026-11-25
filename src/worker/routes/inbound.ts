@@ -4,7 +4,7 @@ import { SEARCH_TEXT_MAX_BYTES, SNIPPET_MAX_CHARS } from "../../shared/types";
 import { requireSession } from "../auth/session";
 import { HttpError, json } from "../http";
 import { normalizeSubject } from "../inbound/headers";
-import { capChars, capUtf8 } from "../inbound/text";
+import { capChars, capUtf8 } from "../../shared/text";
 import type { Route, RouteContext } from "../router";
 import {
   attachmentKey,
