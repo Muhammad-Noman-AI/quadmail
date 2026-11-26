@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { api, ApiError } from "../api";
 import { derivePasswordKey } from "./kdf";
 
-export function Login({ onSignedIn }: { onSignedIn: () => void }) {
+export function Login({ onSignedIn, notice }: { onSignedIn: () => void; notice?: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -44,6 +44,7 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
           <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">QuadMail</h1>
           <p className="text-sm text-neutral-500">{needsCode ? "Enter the 6-digit code from your authenticator app." : "Sign in to your mailbox."}</p>
         </div>
+        {notice && <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800 dark:bg-blue-950 dark:text-blue-200">{notice}</p>}
         {!needsCode ? (
           <>
             <label className="block space-y-1 text-sm">
