@@ -8,6 +8,7 @@ import { inboundRoutes } from "./routes/inbound";
 import { mailRoutes } from "./routes/mail";
 import { sendRoutes } from "./routes/send";
 import { teamRoutes } from "./routes/team";
+import { usageRoutes } from "./routes/usage";
 import { handleScheduled } from "./scheduled";
 
 const routes: Route[] = [
@@ -24,6 +25,7 @@ const routes: Route[] = [
   ...inboundRoutes,
   ...sendRoutes,
   ...teamRoutes,
+  ...usageRoutes,
 ];
 
 export default {

@@ -119,7 +119,7 @@ const routes: Route[] = [
       const address = row.from_addr.toLowerCase();
       await env.DB.batch([
         env.DB.prepare("INSERT OR IGNORE INTO blocked_senders (user_id, address, created_at) VALUES (?, ?, ?)").bind(session.userId, address, Date.now()),
-        env.DB.prepare("UPDATE messages SET folder = 'spam' WHERE user_id = ? AND from_addr = ? COLLATE NOCASE AND folder = 'inbox'").bind(session.userId, address),
+        env.DB.prepare("UPDATE messages SET folder = 'spam', folder_changed_at = ? WHERE user_id = ? AND from_addr = ? COLLATE NOCASE AND folder = 'inbox'").bind(Date.now(), session.userId, address),
         auditStatement(env.DB, session.email, "sender.blocked", { address }),
       ]);
       return json({ ok: true, address });

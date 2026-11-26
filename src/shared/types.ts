@@ -127,3 +127,19 @@ export interface TeamMember {
   createdAt: number;
   addresses: Array<{ id: string; address: string }>;
 }
+
+/** Admin usage page: free-tier consumption. R2 is an estimate from sizes recorded in D1. */
+export interface Usage {
+  d1Bytes: number;
+  d1LimitBytes: number;
+  r2Bytes: number;
+  r2LimitBytes: number;
+  messages: number;
+  perUser: Array<{ email: string; messages: number }>;
+  sentToday: number;
+  dailyLimit: number;
+  providerDailyLimit: number;
+  sentThisMonth: number;
+  providerMonthlyLimit: number;
+  retentionDays: number;
+}

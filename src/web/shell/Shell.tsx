@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MessageDetail, MessageSummary, SendingInfo } from "../../shared/types";
 import { api, type Label, type Me } from "../api";
 import { Composer } from "../compose/Composer";
@@ -7,11 +7,13 @@ import { loadContent } from "../mail/content";
 import { INDEXED_EVENT, processPending, type IndexedDetail } from "../mail/parse";
 import { Reader } from "../reader/Reader";
 import { navigate, useRoute, viewHash } from "../route";
+import { SHORTCUT_HELP, shortcutFor } from "../shortcuts";
 import { applyPatch, patchMessages, type MessagePatch } from "./actions";
 import { MessageList } from "./MessageList";
 import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
 import { Team } from "./Team";
+import { UsagePage } from "./UsagePage";
 
 interface ComposeState {
   /** Remounts the composer for each new message. */
@@ -34,6 +36,9 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
   const [notice, setNotice] = useState<string | null>(null);
   const [searchText, setSearchText] = useState(view.kind === "search" ? view.query : "");
   const [compose, setCompose] = useState<ComposeState | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const searchInput = useRef<HTMLInputElement>(null);
   const viewKey = viewHash(view);
 
   const refreshMeta = useCallback(() => {
@@ -56,10 +61,10 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
     [viewKey],
   );
 
-  const pageView = view.kind === "settings" || view.kind === "team";
+  const pageView = view.kind === "settings" || view.kind === "team" || view.kind === "usage";
 
   const reload = useCallback(() => {
-    if (view.kind === "settings" || view.kind === "team") return;
+    if (view.kind === "settings" || view.kind === "team" || view.kind === "usage") return;
     const url = listUrl();
     api<Page>(url)
       .then((result) => setPage({ items: result.items, nextCursor: result.nextCursor ?? null }))
@@ -75,6 +80,38 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
   }, [refreshMeta]);
 
   useEffect(reload, [reload]);
+
+  // The mobile menu closes when you go somewhere.
+  useEffect(() => {
+    const close = () => setMenuOpen(false);
+    window.addEventListener("hashchange", close);
+    return () => window.removeEventListener("hashchange", close);
+  }, []);
+
+  // New mail without pressing Refresh: every minute while the tab is visible, and when it regains focus.
+  // Only the first page is refreshed, so "Load more" results are not thrown away.
+  const latest = useRef({ reload, refreshMeta, canRefresh: true });
+  useEffect(() => {
+    latest.current = { reload, refreshMeta, canRefresh: page.items.length <= 50 };
+  });
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      const { reload: refreshList, refreshMeta: refreshCounts, canRefresh } = latest.current;
+      refreshCounts();
+      if (canRefresh) refreshList();
+      processPending().catch(() => {});
+    };
+    const timer = setInterval(tick, 60_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
 
   // A message indexed in the background or on open: show its snippet now instead of "Not indexed yet".
   useEffect(() => {
@@ -152,6 +189,58 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewKey, refreshMeta, reload]);
 
+  // Keyboard shortcuts (src/web/shortcuts.ts). Off while the composer is open or you are typing.
+  const keyState = useRef({ page, messageId, view, compose, showHelp, act, reply, openCompose });
+  useEffect(() => {
+    keyState.current = { page, messageId, view, compose, showHelp, act, reply, openCompose };
+  });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const action = shortcutFor(event);
+      if (!action) return;
+      const state = keyState.current;
+      if (action === "help") {
+        event.preventDefault();
+        setShowHelp((v) => !v);
+        return;
+      }
+      if (state.showHelp && action === "back") {
+        setShowHelp(false);
+        return;
+      }
+      if (state.compose || state.view.kind === "settings" || state.view.kind === "team" || state.view.kind === "usage") return;
+      const items = state.page.items;
+      const index = items.findIndex((m) => m.id === state.messageId);
+      const current = index >= 0 ? items[index]! : null;
+      const go = (target: { id: string } | undefined) => {
+        if (target) navigate(viewHash(state.view, target.id));
+      };
+      event.preventDefault();
+      if (action === "compose") state.openCompose(null);
+      else if (action === "search") searchInput.current?.focus();
+      else if (action === "next") go(index < 0 ? items[0] : items[index + 1]);
+      else if (action === "previous") go(index < 0 ? items[0] : items[index - 1]);
+      else if (action === "open") {
+        if (!state.messageId) go(items[0]);
+      } else if (action === "back") {
+        if (state.messageId) navigate(viewHash(state.view));
+      } else if (action === "archive") {
+        if (current) void state.act([current.id], { folder: "archive" });
+      } else if (action === "delete") {
+        if (current) void state.act([current.id], { folder: "trash" });
+      } else if (action === "star") {
+        if (current) void state.act([current.id], { isStarred: !current.isStarred });
+      } else if (state.messageId) {
+        const mode = action;
+        void api<MessageDetail>(`/api/messages/${state.messageId}`)
+          .then((m) => state.reply(m, mode as ReplyMode))
+          .catch(() => {});
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   async function signOut() {
     await api("/api/auth/logout", { method: "POST" }).catch(() => {});
     onSignedOut();
@@ -164,6 +253,9 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
   return (
     <div className="flex h-screen flex-col bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <header className="flex items-center gap-3 border-b border-neutral-200 px-4 py-2 dark:border-neutral-800">
+        <button onClick={() => setMenuOpen(true)} aria-label="Open menu" className="rounded-lg px-2 py-1 text-lg leading-none hover:bg-neutral-200 md:hidden dark:hover:bg-neutral-800">
+          ☰
+        </button>
         <a href="#/inbox" className="text-lg font-semibold">
           QuadMail
         </a>
@@ -175,6 +267,7 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
           }}
         >
           <input
+            ref={searchInput}
             type="search"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
@@ -184,6 +277,9 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
         </form>
         <button onClick={() => openCompose(null)} className="rounded-lg bg-blue-600 px-3 py-1 text-sm font-medium text-white md:hidden">
           Compose
+        </button>
+        <button onClick={() => setShowHelp(true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" className="hidden rounded-lg px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-200 lg:inline dark:hover:bg-neutral-800">
+          ?
         </button>
         <span className="hidden text-sm text-neutral-500 sm:inline">{me.email}</span>
         <button onClick={signOut} className="rounded-lg px-2 py-1 text-sm text-neutral-600 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-800">
@@ -210,8 +306,27 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
           isAdmin={me.role === "admin"}
           className={messageId || compose ? "hidden lg:flex" : "hidden md:flex"}
         />
+        {menuOpen && (
+          <div className="fixed inset-0 z-40 flex md:hidden" role="dialog" aria-label="Menu">
+            <Sidebar
+              view={view}
+              labels={labels}
+              counts={counts}
+              onLabelsChanged={refreshMeta}
+              onCompose={() => {
+                setMenuOpen(false);
+                openCompose(null);
+              }}
+              isAdmin={me.role === "admin"}
+              className="flex bg-neutral-50 shadow-xl dark:bg-neutral-950"
+            />
+            <button aria-label="Close menu" className="flex-1 bg-black/40" onClick={() => setMenuOpen(false)} />
+          </div>
+        )}
         {view.kind === "settings" ? (
           <Settings me={me} onChanged={onMeChanged} onSignedOut={onSignedOut} />
+        ) : view.kind === "usage" ? (
+          me.role === "admin" ? <UsagePage /> : <p className="p-6 text-sm text-neutral-500">Only an admin can see usage.</p>
         ) : view.kind === "team" ? (
           me.role === "admin" ? <Team me={me} /> : <p className="p-6 text-sm text-neutral-500">Only an admin can manage the team.</p>
         ) : (
@@ -245,6 +360,28 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
           </>
         )}
       </div>
+
+      {showHelp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-label="Keyboard shortcuts" onClick={() => setShowHelp(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl dark:bg-neutral-900" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-semibold">Keyboard shortcuts</h2>
+              <button onClick={() => setShowHelp(false)} aria-label="Close" className="text-lg leading-none">×</button>
+            </div>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+              {SHORTCUT_HELP.map(([keys, label]) => (
+                <div key={keys} className="contents">
+                  <dt>
+                    <kbd className="rounded border border-neutral-300 px-1.5 font-mono text-xs dark:border-neutral-700">{keys}</kbd>
+                  </dt>
+                  <dd className="text-neutral-700 dark:text-neutral-300">{label}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

@@ -220,8 +220,8 @@ export function bulkUpdateStatements(db: D1Database, userId: string, update: Bul
     values.push(update.isStarred ? 1 : 0);
   }
   if (update.folder) {
-    sets.push("folder = ?");
-    values.push(update.folder);
+    sets.push("folder = ?", "folder_changed_at = ?");
+    values.push(update.folder, Date.now());
   }
   for (let i = 0; i < update.ids.length; i += ID_CHUNK) {
     const chunk = update.ids.slice(i, i + ID_CHUNK);

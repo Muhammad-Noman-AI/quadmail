@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type Me } from "../api";
 import { derivePasswordKey } from "../auth/kdf";
 import { ChangePassword } from "../auth/ChangePassword";
+import { setThemeChoice, themeChoice, type ThemeChoice } from "../theme";
 import { SendingSettings } from "./SendingSettings";
 
 interface Blocked {
@@ -76,6 +77,15 @@ export function Settings({ me, onChanged, onSignedOut }: { me: Me; onChanged: ()
             {message.text}
           </p>
         )}
+
+        <div className="space-y-2">
+          <h2 className="font-medium">Appearance</h2>
+          <select className={input} defaultValue={themeChoice()} onChange={(e) => setThemeChoice(e.target.value as ThemeChoice)} aria-label="Theme">
+            <option value="system">Same as my device</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
 
         <SendingSettings me={me} />
 

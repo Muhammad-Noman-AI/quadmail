@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { MessageDetail, ParsedMessage } from "../../shared/types";
 import { formatBytes } from "../format";
 import { loadContent } from "../mail/content";
+import { isDark } from "../theme";
 import { frameDocument, inlineImageMap, plainTextToHtml, sanitizeEmailHtml } from "./sanitize";
 
 const SENDER_KEY = "qm:remote-ok:";
@@ -14,7 +15,18 @@ export function MessageBody({ message }: { message: MessageDetail }) {
   const [parsed, setParsed] = useState<ParsedMessage | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [allowRemote, setAllowRemote] = useState(() => senderAllowsRemote(message.from?.address));
-  const dark = typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+  const [dark, setDark] = useState(isDark);
+  useEffect(() => {
+    // Re-render the message frame when the theme changes.
+    const onTheme = () => setDark(isDark());
+    window.addEventListener("qm:theme", onTheme);
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    media.addEventListener("change", onTheme);
+    return () => {
+      window.removeEventListener("qm:theme", onTheme);
+      media.removeEventListener("change", onTheme);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;

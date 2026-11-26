@@ -122,9 +122,14 @@ export function Sidebar({
       </div>
       <div className="mt-auto space-y-0.5">
         {isAdmin && (
-          <a href="#/team" className={item(view.kind === "team")}>
-            Team
-          </a>
+          <>
+            <a href="#/team" className={item(view.kind === "team")}>
+              Team
+            </a>
+            <a href="#/usage" className={item(view.kind === "usage")}>
+              Usage
+            </a>
+          </>
         )}
         <a href="#/settings" className={item(view.kind === "settings")}>
           Settings

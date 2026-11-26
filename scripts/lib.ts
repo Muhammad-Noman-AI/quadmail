@@ -27,6 +27,20 @@ export function wrangler(args: string[]): void {
   if (result.status !== 0) throw new Error(`wrangler ${args[0]} ${args[1] ?? ""} failed:\n${result.stderr}`);
 }
 
+/** Run wrangler and return stdout (for `--json` output). Same quoting rule as wrangler(). */
+export function wranglerOutput(args: string[]): string {
+  const result = spawnSync(["pnpm", "-s", "wrangler", ...args].join(" "), {
+    cwd: ROOT,
+    stdio: ["ignore", "pipe", "pipe"],
+    shell: true,
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (result.status !== 0) throw new Error(`wrangler ${args[0]} ${args[1] ?? ""} failed:
+${result.stderr}`);
+  return result.stdout;
+}
+
 /** Run SQL from a temporary file (multi-statement files work on Windows; multi-line --command does not). */
 export function executeSql(statements: string[], target: "--local" | "--remote"): void {
   const dir = mkdtempSync(join(tmpdir(), "quadmail-"));

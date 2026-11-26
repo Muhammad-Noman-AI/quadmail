@@ -23,7 +23,7 @@ pnpm check                       # typecheck + lint + tests
 
 ## Status
 
-Phases 1–5 done and deployed: scaffold, D1 + R2, inbound pipeline, auth + read UI, sending; plus multi-user (Team). Next: Phase 6 (polish and operations).
+Phases 1–5 done and deployed: scaffold, D1 + R2, inbound pipeline, auth + read UI, sending; plus multi-user (Team) and Phase 6 (usage page, retention, PWA, shortcuts, themes, mobile menu, backups). Next: Phase 7 (hardening, tests, final docs).
 
 ## Sending (Resend)
 
@@ -50,6 +50,17 @@ The first user (set with `pnpm owner:password`) is an admin. Admins open **Team*
 disable users, and give extra addresses such as `sales@`. Every user sees only their own mail; this is enforced in
 every query on the server. Inbound mail is routed by recipient address: an address belongs to exactly one user,
 and mail to an unknown address (catch-all) or to a disabled user goes to the first active admin.
+
+## Operations
+
+- **Usage** (admin, sidebar): sends today and this month, D1 size, estimated R2 size, messages per user; warns at 80%.
+- **Retention:** the daily cron empties Trash and Spam 30 days after a message was moved there (R2 files first,
+  then rows), and removes expired sessions.
+- **Backups:** `pnpm backup:remote` writes every D1 table as JSON plus `r2-keys.txt` to `backups/` (gitignored;
+  contains password hashes, keep it private). Add `-- --with-mail` to download the R2 files too. To undo recent
+  changes use D1 Time Travel (7 days on the free plan): `pnpm exec wrangler d1 time-travel info quadmail`.
+- **App:** installable as a PWA (manifest + icons, regenerate with `pnpm icons`), keyboard shortcuts (press `?`),
+  light/dark/system theme in Settings, the list refreshes every minute while the tab is visible.
 
 ## Database
 
