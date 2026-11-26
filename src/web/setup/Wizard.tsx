@@ -34,7 +34,7 @@ function Copy({ value }: { value: string }) {
   );
 }
 
-function Badge({ status }: { status: string }) {
+export function Badge({ status }: { status: string }) {
   const ok = status === "verified" || status === "ok";
   const bad = status === "failed" || status === "fail" || status === "partially_failed";
   const color = ok
@@ -45,7 +45,49 @@ function Badge({ status }: { status: string }) {
   return <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${color}`}>{status.replace(/_/g, " ")}</span>;
 }
 
-function CheckRow({ label, check }: { label: string; check: DnsCheck }) {
+/** DNS records to add, with copy buttons and per-record status. Also used in Settings. */
+export function RecordsTable({ records }: { records: SetupDomain["records"] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead className="text-xs text-neutral-500">
+          <tr>
+            <th className="py-1 pr-2">Type</th>
+            <th className="py-1 pr-2">Name</th>
+            <th className="py-1 pr-2">Value</th>
+            <th className="py-1 pr-2">Priority</th>
+            <th className="py-1">Status</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+          {records.map((r, i) => (
+            <tr key={`${r.type}-${r.name}-${i}`} className="align-top">
+              <td className="py-2 pr-2 font-mono">{r.type}</td>
+              <td className="py-2 pr-2">
+                <div className="flex items-start gap-1">
+                  <code className="break-all">{r.name}</code>
+                  <Copy value={r.name} />
+                </div>
+              </td>
+              <td className="py-2 pr-2">
+                <div className="flex items-start gap-1">
+                  <code className="max-w-[16rem] break-all text-xs">{r.value}</code>
+                  <Copy value={r.value} />
+                </div>
+              </td>
+              <td className="py-2 pr-2">{r.priority ?? ""}</td>
+              <td className="py-2">
+                <Badge status={r.status} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function CheckRow({ label, check }: { label: string; check: DnsCheck }) {
   const icon = check.status === "ok" ? "✓" : check.status === "fail" ? "✕" : "!";
   const color = check.status === "ok" ? "text-green-700 dark:text-green-300" : check.status === "fail" ? "text-red-600 dark:text-red-300" : "text-amber-700 dark:text-amber-300";
   return (
@@ -272,42 +314,7 @@ function Configure({ status, reload }: { status: SetupStatus; reload: () => Prom
         {!domainInfo ? (
           <p className="text-sm text-neutral-500">Loading records…</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs text-neutral-500">
-                <tr>
-                  <th className="py-1 pr-2">Type</th>
-                  <th className="py-1 pr-2">Name</th>
-                  <th className="py-1 pr-2">Value</th>
-                  <th className="py-1 pr-2">Priority</th>
-                  <th className="py-1">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                {domainInfo.records.map((r, i) => (
-                  <tr key={`${r.type}-${r.name}-${i}`} className="align-top">
-                    <td className="py-2 pr-2 font-mono">{r.type}</td>
-                    <td className="py-2 pr-2">
-                      <div className="flex items-start gap-1">
-                        <code className="break-all">{r.name}</code>
-                        <Copy value={r.name} />
-                      </div>
-                    </td>
-                    <td className="py-2 pr-2">
-                      <div className="flex items-start gap-1">
-                        <code className="max-w-[16rem] break-all text-xs">{r.value}</code>
-                        <Copy value={r.value} />
-                      </div>
-                    </td>
-                    <td className="py-2 pr-2">{r.priority ?? ""}</td>
-                    <td className="py-2">
-                      <Badge status={r.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <RecordsTable records={domainInfo.records} />
         )}
         <div className="flex flex-wrap items-center gap-3">
           <button disabled={busy || !domainInfo} className={primary} onClick={check}>{busy ? "Checking…" : "Check"}</button>

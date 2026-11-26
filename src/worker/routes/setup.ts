@@ -17,8 +17,8 @@ import { checkDomainDns } from "../setup/dns";
 import { ResendAdmin, ResendAdminError, type ResendDomain } from "../setup/resend-admin";
 
 /** The full-access key is kept between steps 3 and 5 at most this long. */
-const SETUP_KEY_TTL_MS = 2 * 60 * 60 * 1000;
-const DOMAIN = /^(?=.{3,253}$)(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/;
+export const SETUP_KEY_TTL_MS = 2 * 60 * 60 * 1000;
+export const DOMAIN = /^(?=.{3,253}$)(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/;
 
 const adminBody = z.object({
   code: z.string().min(1).max(200),
@@ -51,7 +51,7 @@ async function requireSetupAdmin(request: Request, env: Env): Promise<{ session:
   return { session, cfg };
 }
 
-function toSetupDomain(domain: ResendDomain): SetupDomain {
+export function toSetupDomain(domain: ResendDomain): SetupDomain {
   return {
     id: domain.id,
     name: domain.name,
@@ -72,7 +72,7 @@ async function setupAdmin(env: Env, cfg: ResolvedConfig): Promise<{ admin: Resen
   return { admin: new ResendAdmin(stored.resend_setup_key, cfg.resendApiBase), domainId: stored.resend_domain_id };
 }
 
-function resendError(err: unknown): never {
+export function resendError(err: unknown): never {
   if (err instanceof ResendAdminError) throw new HttpError(err.status >= 400 && err.status < 500 ? 400 : 502, err.message);
   throw err;
 }

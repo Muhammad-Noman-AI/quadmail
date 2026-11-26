@@ -3,6 +3,7 @@ import { api, ApiError, type Me } from "../api";
 import { derivePasswordKey } from "../auth/kdf";
 import { ChangePassword } from "../auth/ChangePassword";
 import { setThemeChoice, themeChoice, type ThemeChoice } from "../theme";
+import { DomainSettings } from "./DomainSettings";
 import { SendingSettings } from "./SendingSettings";
 
 interface Blocked {
@@ -88,6 +89,8 @@ export function Settings({ me, onChanged, onSignedOut }: { me: Me; onChanged: ()
         </div>
 
         <SendingSettings me={me} />
+
+        {me.role === "admin" && <DomainSettings />}
 
         <div className="space-y-2">
           <h2 className="font-medium">Password</h2>

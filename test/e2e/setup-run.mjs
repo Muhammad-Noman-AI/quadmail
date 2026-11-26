@@ -161,6 +161,29 @@ try {
   const login = await relogin.call("POST", "/api/auth/login", { email: ADMIN, passwordKey });
   check("the admin signs in normally", login.status === 200 && login.data.mustChangePassword === false);
 
+  // S4: Settings → Domains & sending.
+  const second = "second-e2e.example";
+  x = await admin.call("GET", "/api/admin/sending");
+  check("settings: one domain, nothing fixed by env", x.data.domains.join() === DOMAIN && !x.data.domainsFromEnv && !x.data.limitFromEnv && !x.data.keyFromEnv);
+  check("settings: change the daily limit", (await admin.call("PATCH", "/api/admin/sending", { dailyLimit: 50 })).status === 200 && (await admin.call("GET", "/api/sending")).data.dailyLimit === 50);
+  x = await admin.call("POST", "/api/admin/domains", { domain: second, apiKey: "re_full" });
+  check("settings: adding a domain returns its DNS records", x.status === 200 && x.data.name === second && x.data.records.length > 0);
+  x = await admin.call("POST", "/api/admin/domains/verify");
+  const allKey = mock.state.createdKeys.at(-1);
+  check("settings: verified domain added with a key for all domains", x.data.added === true && allKey.domain_id === undefined && allKey.permission === "sending_access");
+  check("settings: both domains listed", (await admin.call("GET", "/api/admin/sending")).data.domains.join() === `${DOMAIN},${second}`);
+  const me = (await admin.call("GET", "/api/me")).data;
+  check("settings: the new domain can be given as an address", (await admin.call("POST", `/api/team/${me.id}/addresses`, { address: `sales@${second}` })).status === 201);
+  x = await admin.call("POST", "/api/drafts", { from: `sales@${second}`, to: [{ address: "friend@gmail.com" }], cc: [], bcc: [], subject: "from second", html: "<p>hi</p>", text: "hi" });
+  x = await admin.call("POST", `/api/drafts/${x.data.id}/send`);
+  check("settings: sending from the new domain uses the new key", x.status === 200 && mock.state.emails.at(-1)?.key === allKey.token);
+  check("settings: remove a domain", (await admin.call("DELETE", `/api/admin/domains/${second}`)).status === 200 && (await admin.call("GET", "/api/admin/sending")).data.domains.join() === DOMAIN);
+  check("settings: the last domain cannot be removed", (await admin.call("DELETE", `/api/admin/domains/${DOMAIN}`)).status === 400);
+  x = await admin.call("POST", "/api/admin/resend-key", { apiKey: "re_full" });
+  const replaced = mock.state.createdKeys.at(-1);
+  check("settings: replace key creates a domain-restricted sending key", x.status === 200 && replaced.domain_id === [...mock.state.domains.values()].find((d) => d.name === DOMAIN)?.id);
+  check("settings: a restricted key cannot manage domains", (await admin.call("POST", "/api/admin/domains", { domain: "third.example", apiKey: "re_restricted" })).status === 400);
+
   // Secrets are stored encrypted, never in plain text.
   const dump = wrangler(["d1", "execute", "quadmail", "--local", "--config", `"${work}/wrangler.jsonc"`, "--persist-to", `"${work}/state"`, "--json", "--command", '"SELECT key, value FROM app_config"']);
   check("no secret in plain text in D1", !dump.stdout.includes(created.token) && !dump.stdout.includes(hook.secret) && !dump.stdout.includes("re_full"));

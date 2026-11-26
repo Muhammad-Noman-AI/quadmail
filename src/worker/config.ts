@@ -43,6 +43,9 @@ export interface StoredConfig {
   resend_setup_key_at?: string;
   inbound_test_address?: string;
   inbound_verified?: string;
+  /** A domain being added in Settings, until Resend verifies it. */
+  pending_domain?: string;
+  pending_domain_id?: string;
 }
 
 const SECRET_KEYS = new Set<keyof StoredConfig>(["resend_api_key", "resend_webhook_secret", "resend_setup_key"]);

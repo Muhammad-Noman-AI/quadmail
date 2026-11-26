@@ -182,3 +182,14 @@ export interface SetupStatus {
   inboundTestAddress: string | null;
   inboundVerified: boolean;
 }
+
+/** Settings → Domains & sending (admin). `*FromEnv`: fixed by a Worker variable, not editable here. */
+export interface SendingSettingsInfo {
+  domains: string[];
+  domainsFromEnv: boolean;
+  dailyLimit: number;
+  limitFromEnv: boolean;
+  keyFromEnv: boolean;
+  providerReady: boolean;
+  pendingDomain: string | null;
+}

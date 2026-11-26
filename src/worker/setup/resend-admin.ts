@@ -114,9 +114,13 @@ export class ResendAdmin {
     return { id: created.id, signingSecret: created.signing_secret };
   }
 
-  /** A key that can only send, restricted to one domain. The token is only returned here. */
-  async createSendingKey(name: string, domainId: string): Promise<string> {
-    const created = await this.call<{ token?: string }>("POST", "/api-keys", { name: name.slice(0, 50), permission: "sending_access", domain_id: domainId });
+  /** A key that can only send; restricted to one domain when domainId is given. The token is only returned here. */
+  async createSendingKey(name: string, domainId: string | null): Promise<string> {
+    const created = await this.call<{ token?: string }>("POST", "/api-keys", {
+      name: name.slice(0, 50),
+      permission: "sending_access",
+      ...(domainId ? { domain_id: domainId } : {}),
+    });
     if (!created.token?.startsWith("re_")) throw new ResendAdminError(502, "Resend did not return the new key.");
     return created.token;
   }
