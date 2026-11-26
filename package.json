@@ -5,6 +5,7 @@
   "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.16.0",
   "scripts": {
     "dev": "vite",
     "dev:quadgentics": "vite --mode quadgentics",
