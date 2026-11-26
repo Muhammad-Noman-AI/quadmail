@@ -22,8 +22,9 @@ domain on Cloudflare and a GitHub account.
    to your GitHub, creates the Worker, D1 and R2, runs the migrations and deploys. Choose a **setup code** in the form.
 2. Open your new QuadMail address. The setup wizard asks for the setup code, then walks you through your domain,
    Resend, DNS records, receiving and a test mail.
-3. Updates: in your GitHub copy, **Actions → Update QuadMail** runs every Monday (or on demand) and installs the
-   latest release.
+3. Updates: Cloudflare does not copy GitHub workflow files, so add the **Update QuadMail** workflow to your copy once:
+   QuadMail's **Usage** page has a button that opens GitHub with the file filled in. It then installs the latest
+   release every Monday (or on demand: Actions → Update QuadMail → Run workflow), and Cloudflare deploys it.
 
 ## Development
 

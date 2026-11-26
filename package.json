@@ -1,6 +1,6 @@
 {
   "name": "quadmail",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Your own email server and webmail on Cloudflare's free plan, with Resend for sending.",
   "license": "AGPL-3.0-only",
   "private": true,

@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import type { Usage } from "../../shared/types";
 import { api, ApiError } from "../api";
 import { formatBytes } from "../format";
+// The workflow a Deploy-button copy needs; Cloudflare does not copy .github/ into it.
+import updateWorkflow from "../../../.github/workflows/update.yml?raw";
 
 const WARN_AT = 0.8;
 
@@ -33,6 +35,44 @@ interface VersionInfo {
   repo: string | null;
 }
 
+/** GitHub's "new file" page with the update workflow already filled in: the user only commits it. */
+function AutoUpdates() {
+  const [repo, setRepo] = useState(() => localStorage.getItem("qm:github-copy") ?? "");
+  const valid = /^[\w.-]+\/[\w.-]+$/.test(repo.trim());
+  const url = `https://github.com/${repo.trim()}/new/main?filename=${encodeURIComponent(".github/workflows/update.yml")}&value=${encodeURIComponent(updateWorkflow)}`;
+  return (
+    <div className="space-y-2 rounded-xl border border-neutral-200 p-4 text-sm dark:border-neutral-800">
+      <h2 className="font-medium">Automatic updates</h2>
+      <p className="text-neutral-600 dark:text-neutral-400">
+        Installed with the Deploy button? Cloudflare does not copy GitHub workflow files, so add the <b>Update QuadMail</b> workflow to your GitHub copy once. It then installs
+        new releases every Monday.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 dark:border-neutral-700 dark:bg-neutral-900"
+          placeholder="your-github-name/quadmail"
+          value={repo}
+          onChange={(e) => {
+            setRepo(e.target.value);
+            localStorage.setItem("qm:github-copy", e.target.value.trim());
+          }}
+          aria-label="Your GitHub copy (owner/name)"
+        />
+        <a
+          href={valid ? url : undefined}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-disabled={!valid}
+          className={`rounded-lg px-3 py-1.5 font-medium text-white ${valid ? "bg-blue-600 hover:bg-blue-700" : "pointer-events-none bg-neutral-400"}`}
+        >
+          Open GitHub to add it
+        </a>
+      </div>
+      <p className="text-xs text-neutral-500">GitHub opens with the file filled in: press <b>Commit changes</b>. To update right away: Actions → Update QuadMail → Run workflow.</p>
+    </div>
+  );
+}
+
 export function UsagePage() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [version, setVersion] = useState<VersionInfo | null>(null);
@@ -56,13 +96,14 @@ export function UsagePage() {
             {version.updateAvailable ? (
               <>
                 {" "}
-                — <b>update available: {version.latest}</b>. In your GitHub copy of QuadMail open <b>Actions → Update QuadMail → Run workflow</b>. Cloudflare then builds and deploys it.
+                — <b>update available: {version.latest}</b>. In your GitHub copy open <b>Actions → Update QuadMail → Run workflow</b> (first time: add it below). Cloudflare then builds and deploys it.
               </>
             ) : version.latest ? (
               " — up to date."
             ) : null}
           </div>
         )}
+        <AutoUpdates />
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{error}</p>}
         {!usage && !error && <p className="text-sm text-neutral-400">Loading…</p>}
         {usage && (
