@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateDns, unquoteTxt } from "./dns";
+import { evaluateDns, parentDomain, unquoteTxt } from "./dns";
 import { ResendAdmin, ResendAdminError, WEBHOOK_EVENTS } from "./resend-admin";
 
 describe("evaluateDns", () => {
@@ -27,6 +27,14 @@ describe("evaluateDns", () => {
     expect(report.spf.status).toBe("warn");
     expect(report.dmarc.message).toContain("v=DMARC1; p=none; rua=mailto:dmarc@acme.com");
     expect(report.mx.status).toBe("warn");
+  });
+
+  it("a subdomain without its own DMARC inherits the parent's", () => {
+    expect(parentDomain("trial.acme.com")).toBe("acme.com");
+    expect(parentDomain("acme.com")).toBeNull();
+    const report = evaluateDns("trial.acme.com", { rootTxt: [], dmarcTxt: [], mx: [], parentDmarcTxt: ["v=DMARC1; p=none"] });
+    expect(report.dmarc.status).toBe("ok");
+    expect(report.dmarc.message).toContain("acme.com");
   });
 
   it("joins split TXT strings", () => {

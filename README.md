@@ -16,7 +16,9 @@ domain on Cloudflare and a GitHub account.
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Muhammad-Noman-AI/quadmail)
 
-1. Click **Deploy to Cloudflare** above. Cloudflare copies the code
+1. Click **Deploy to Cloudflare** above. If your Cloudflare account already has a Worker, D1 database or R2 bucket
+   called `quadmail`, choose other names in the form and pick **Create new** for D1 and R2 (the form may preselect an
+   existing database). Cloudflare copies the code
    to your GitHub, creates the Worker, D1 and R2, runs the migrations and deploys. Choose a **setup code** in the form.
 2. Open your new QuadMail address. The setup wizard asks for the setup code, then walks you through your domain,
    Resend, DNS records, receiving and a test mail.

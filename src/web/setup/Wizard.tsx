@@ -100,6 +100,12 @@ export function CheckRow({ label, check }: { label: string; check: DnsCheck }) {
   );
 }
 
+/** For a subdomain (trial.example.com) the DNS lives in the parent zone (example.com). */
+function zoneOf(domain: string): { zone: string; isSubdomain: boolean } {
+  const labels = domain.split(".");
+  return labels.length > 2 ? { zone: labels.slice(-2).join("."), isSubdomain: true } : { zone: domain, isSubdomain: false };
+}
+
 function Shell({ step, title, children }: { step: number; title: string; children: ReactNode }) {
   return (
     <main className="min-h-screen bg-neutral-100 px-4 py-8 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
@@ -309,7 +315,8 @@ function Configure({ status, reload }: { status: SetupStatus; reload: () => Prom
     return (
       <Shell step={3} title={`Add these DNS records for ${domain}`}>
         <p className="text-sm">
-          In Cloudflare open <b>{domain} → DNS → Records</b> and add each record below with <b>Add record</b>. Set proxy to <b>DNS only</b> (grey cloud). Then press <b>Check</b>. It can take a few minutes.
+          In Cloudflare open <b>{zoneOf(domain).zone} → DNS → Records</b> and add each record below with <b>Add record</b>, using the names as shown. Set proxy to <b>DNS only</b>{" "}
+          (grey cloud), also for the CNAME. Then press <b>Check</b>. It can take a few minutes.
         </p>
         {!domainInfo ? (
           <p className="text-sm text-neutral-500">Loading records…</p>
@@ -382,17 +389,36 @@ function Configure({ status, reload }: { status: SetupStatus; reload: () => Prom
 
   if (step === 5) {
     const workerName = window.location.hostname.split(".")[0];
+    const { zone, isSubdomain } = zoneOf(domain);
     return (
       <Shell step={5} title="Receive mail">
-        <ol className="list-decimal space-y-2 pl-5 text-sm">
-          <li>
-            In Cloudflare open <b>{domain} → Email → Email Routing</b> and turn it on (Cloudflare adds the MX and SPF records).
-          </li>
-          <li>
-            Open <b>Routing rules</b>, edit <b>Catch-all address</b>: action <b>Send to a Worker</b>, destination <b>{workerName}</b>. Save.
-          </li>
-          <li>Get a test address below and send any mail to it, for example from your phone.</li>
-        </ol>
+        {isSubdomain ? (
+          <ol className="list-decimal space-y-2 pl-5 text-sm">
+            <li>
+              In Cloudflare open <b>{zone} → Email → Email Routing → Settings</b> and add the subdomain <b>{domain}</b> under <b>Subdomains</b> (Cloudflare adds its MX and SPF records).
+            </li>
+            <li>Get a test address below.</li>
+            <li>
+              Open <b>Routing rules → Create routing rule</b>: custom address = the test address, action <b>Send to a Worker</b>, destination <b>{workerName}</b>. Do <b>not</b> change the
+              Catch-all: it belongs to {zone}. Later, add a rule like this for each address on {domain}.
+            </li>
+            <li>
+              <b>Copy</b> the test address (do not type it) and send any mail to it.
+            </li>
+          </ol>
+        ) : (
+          <ol className="list-decimal space-y-2 pl-5 text-sm">
+            <li>
+              In Cloudflare open <b>{domain} → Email → Email Routing</b> and turn it on (Cloudflare adds the MX and SPF records).
+            </li>
+            <li>
+              Open <b>Routing rules</b>, edit <b>Catch-all address</b>: action <b>Send to a Worker</b>, destination <b>{workerName}</b>. Save.
+            </li>
+            <li>
+              Get a test address below, <b>copy</b> it (do not type it) and send any mail to it, for example from your phone.
+            </li>
+          </ol>
+        )}
         {inbound.address ? (
           <div className="space-y-2 rounded-lg bg-neutral-50 p-3 text-sm dark:bg-neutral-950">
             <div className="flex flex-wrap items-center gap-2">
@@ -464,7 +490,11 @@ function Configure({ status, reload }: { status: SetupStatus; reload: () => Prom
         <li>
           <b>Usage</b> (sidebar): the free plan sends {`up to 100 mails a day`}; QuadMail warns you at 80%.
         </li>
-        {!inbound.received && <li>Receiving was not tested yet: set the catch-all in Email Routing (step 6) and send yourself a mail.</li>}
+        {!inbound.received && (
+          <li>
+            Receiving was not confirmed here. After you open the mailbox, send a mail to {inbound.address ?? `an address on ${domain}`} and check that it arrives in the Inbox.
+          </li>
+        )}
       </ul>
       <button disabled={busy} className={primary} onClick={() => run(async () => {
         await api("/api/setup/finish", { method: "POST" });

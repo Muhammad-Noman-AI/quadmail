@@ -14,12 +14,23 @@ export interface DnsAnswers {
   rootTxt: string[];
   dmarcTxt: string[];
   mx: string[];
+  /** For a subdomain: TXT at _dmarc.<parent domain>, whose policy the subdomain inherits. */
+  parentDmarcTxt?: string[];
+}
+
+/** example.com for trial.example.com (last two labels; good enough for a hint). */
+export function parentDomain(domain: string): string | null {
+  const labels = domain.split(".");
+  return labels.length > 2 ? labels.slice(-2).join(".") : null;
 }
 
 /** Judge the answers. Pure, for tests. */
 export function evaluateDns(domain: string, answers: DnsAnswers): DnsReport {
   const spf = answers.rootTxt.filter((t) => /^v=spf1(\s|$)/i.test(t.trim()));
-  const dmarc = answers.dmarcTxt.filter((t) => /^v=DMARC1(\s*;|$)/i.test(t.trim()));
+  const isDmarc = (t: string) => /^v=DMARC1(\s*;|$)/i.test(t.trim());
+  const dmarc = answers.dmarcTxt.filter(isDmarc);
+  const parentDmarc = (answers.parentDmarcTxt ?? []).filter(isDmarc);
+  const parent = parentDomain(domain);
   const mx = answers.mx.map((m) => m.trim().toLowerCase().replace(/\.$/, ""));
 
   const spfCheck: DnsCheck =
@@ -32,7 +43,9 @@ export function evaluateDns(domain: string, answers: DnsAnswers): DnsReport {
           : { status: "warn", message: "The SPF record does not include include:_spf.mx.cloudflare.net. Add it once Email Routing is on." };
 
   const dmarcCheck: DnsCheck =
-    dmarc.length === 0
+    dmarc.length === 0 && parent && parentDmarc.length === 1
+      ? { status: "ok", message: `No own DMARC record; ${domain} uses the one on ${parent}.` }
+      : dmarc.length === 0
       ? { status: "warn", message: `No DMARC record. Add a TXT record named _dmarc with: v=DMARC1; p=none; rua=mailto:dmarc@${domain}` }
       : dmarc.length > 1
         ? { status: "fail", message: `There are ${dmarc.length} DMARC records. Keep exactly one; with two, Gmail treats DMARC as failed.` }
@@ -59,8 +72,14 @@ async function query(name: string, type: "TXT" | "MX", fetcher: typeof fetch): P
 }
 
 export async function checkDomainDns(domain: string, fetcher: typeof fetch = (input, init) => fetch(input, init)): Promise<DnsReport> {
-  const [rootTxt, dmarcTxt, mx] = await Promise.all([query(domain, "TXT", fetcher), query(`_dmarc.${domain}`, "TXT", fetcher), query(domain, "MX", fetcher)]);
-  return evaluateDns(domain, { rootTxt, dmarcTxt, mx });
+  const parent = parentDomain(domain);
+  const [rootTxt, dmarcTxt, mx, parentDmarcTxt] = await Promise.all([
+    query(domain, "TXT", fetcher),
+    query(`_dmarc.${domain}`, "TXT", fetcher),
+    query(domain, "MX", fetcher),
+    parent ? query(`_dmarc.${parent}`, "TXT", fetcher) : Promise.resolve([]),
+  ]);
+  return evaluateDns(domain, { rootTxt, dmarcTxt, mx, parentDmarcTxt });
 }
 
 export { unquoteTxt };
