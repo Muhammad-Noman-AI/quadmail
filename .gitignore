@@ -11,3 +11,6 @@ mailflare/
 # Agent worktrees
 .claude/
 backups/
+
+# Private planning notes (kept locally, never published)
+Master Prompt*.md
