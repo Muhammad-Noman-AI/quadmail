@@ -22,7 +22,7 @@ import { referenceLookupIds } from "../inbound/threading";
 import type { Route, RouteContext } from "../router";
 import { ProviderError, type OutboundAttachment } from "../send/provider";
 import { ResendProvider } from "../send/resend";
-import { checkSend, domainOf, formatMailbox, SendRuleError, utcDay } from "../send/rules";
+import { checkSend, formatMailbox, SendRuleError, utcDay } from "../send/rules";
 import { deliveryUpdate, verifyWebhook, type WebhookEvent } from "../send/webhook";
 import { findThreadByMessageIds, upsertAttachment } from "../storage/inbound";
 import {
@@ -67,7 +67,6 @@ const draftBody = z.object({
 const createBody = draftBody.extend({ replyToId: id.optional() });
 
 const signature = z.string().max(10_000).nullable();
-const identityCreate = z.object({ address: z.email().max(254), displayName: z.string().trim().max(100).nullable().optional(), signatureHtml: signature.optional() });
 const identityPatch = z.object({ displayName: z.string().trim().max(100).nullable().optional(), signatureHtml: signature.optional(), isDefault: z.literal(true).optional() });
 
 /** Resend caps one webhook body far below this; anything bigger is not from Resend. */
@@ -125,8 +124,8 @@ async function putBody(env: Env, messageId: string, body: StoredBody): Promise<v
   await env.MAIL.put(bodyKey(messageId), JSON.stringify({ html: body.html, text: body.text }), { httpMetadata: { contentType: "application/json" } });
 }
 
-async function requireDraft(env: Env, messageId: string): Promise<DraftRow> {
-  const draft = await getDraft(env.DB, messageId);
+async function requireDraft(env: Env, session: Session, messageId: string): Promise<DraftRow> {
+  const draft = await getDraft(env.DB, session.userId, messageId);
   if (!draft) throw new HttpError(404, "Draft not found. It may have been sent or deleted.");
   return draft;
 }
@@ -157,7 +156,7 @@ async function loadOutgoing(env: Env, draft: DraftRow): Promise<{ body: StoredBo
 async function send({ request, env, ctx, params }: RouteContext): Promise<Response> {
   const session = await requireSession(request, env);
   const cfg = config(env);
-  const draft = await requireDraft(env, param(params.id));
+  const draft = await requireDraft(env, session, param(params.id));
   const identities = await identitiesWithDefault(env, session);
   const to = parseAddresses(draft.to_json);
   const cc = parseAddresses(draft.cc_json);
@@ -180,7 +179,7 @@ async function send({ request, env, ctx, params }: RouteContext): Promise<Respon
 
   const references = parseStringList(draft.references_json);
   const subject = draft.subject ?? "";
-  const existingThread = await findThreadByMessageIds(env.DB, referenceLookupIds(draft.in_reply_to, references));
+  const existingThread = await findThreadByMessageIds(env.DB, session.userId, referenceLookupIds(draft.in_reply_to, references));
   const thread = { id: existingThread ?? ulid(), isNew: !existingThread, subjectNorm: normalizeSubject(subject) };
   const outgoing = await loadOutgoing(env, draft);
 
@@ -254,23 +253,6 @@ const routes: Route[] = [
     },
   },
   {
-    method: "POST",
-    path: "/api/identities",
-    handler: async ({ request, env }) => {
-      const session = await requireSession(request, env);
-      const body = await readJson(request, (v) => identityCreate.parse(v));
-      const addr = body.address.toLowerCase();
-      if (!config(env).ALLOWED_SENDING_DOMAINS.includes(domainOf(addr))) throw new HttpError(400, `Only addresses on ${config(env).ALLOWED_SENDING_DOMAINS.join(", ")} can be used.`);
-      const identity: Identity = { id: ulid(), address: addr, displayName: body.displayName || null, signatureHtml: body.signatureHtml ?? null, isDefault: false };
-      const [insert] = await env.DB.batch([
-        insertIdentity(env.DB, { ...identity, userId: session.userId }),
-        auditStatement(env.DB, session.email, "identity.created", { address: addr }),
-      ]);
-      if (!insert?.meta.changes) throw new HttpError(409, "That address is already one of your identities.");
-      return json(identity, { status: 201 });
-    },
-  },
-  {
     method: "PATCH",
     path: "/api/identities/:id",
     handler: async ({ request, env, params }) => {
@@ -284,20 +266,6 @@ const routes: Route[] = [
     },
   },
   {
-    method: "DELETE",
-    path: "/api/identities/:id",
-    handler: async ({ request, env, params }) => {
-      const session = await requireSession(request, env);
-      const identityId = param(params.id);
-      const [removed] = await env.DB.batch([
-        env.DB.prepare("DELETE FROM identities WHERE id = ? AND user_id = ? AND is_default = 0").bind(identityId, session.userId),
-        auditStatement(env.DB, session.email, "identity.deleted", { id: identityId }),
-      ]);
-      if (!removed?.meta.changes) throw new HttpError(400, "The default identity cannot be deleted. Make another one the default first.");
-      return json({ ok: true });
-    },
-  },
-  {
     method: "POST",
     path: "/api/drafts",
     handler: async ({ request, env }) => {
@@ -305,8 +273,8 @@ const routes: Route[] = [
       const body = await readJson(request, (v) => createBody.parse(v));
       let reply = { inReplyTo: null as string | null, references: [] as string[] };
       if (body.replyToId) {
-        const original = await env.DB.prepare("SELECT message_id_hdr, references_json FROM messages WHERE id = ?")
-          .bind(body.replyToId)
+        const original = await env.DB.prepare("SELECT message_id_hdr, references_json FROM messages WHERE id = ? AND user_id = ?")
+          .bind(body.replyToId, session.userId)
           .first<{ message_id_hdr: string | null; references_json: string | null }>();
         if (!original) throw new HttpError(404, "The message you are replying to no longer exists.");
         const refs = [...parseStringList(original.references_json), ...(original.message_id_hdr ? [original.message_id_hdr] : [])];
@@ -315,7 +283,7 @@ const routes: Route[] = [
       const draftId = ulid();
       const now = Date.now();
       await putBody(env, draftId, body);
-      await insertDraft(env.DB, draftId, draftFields(body, await listIdentities(env.DB, session.userId)), reply, now).run();
+      await insertDraft(env.DB, session.userId, draftId, draftFields(body, await listIdentities(env.DB, session.userId)), reply, now).run();
       return json({ id: draftId, savedAt: now }, { status: 201 });
     },
   },
@@ -328,7 +296,7 @@ const routes: Route[] = [
       const body = await readJson(request, (v) => draftBody.parse(v));
       const now = Date.now();
       // D1 first: once a draft is sent the update matches nothing, so the sent body in R2 is never overwritten.
-      if (!(await updateDraft(env.DB, draftId, draftFields(body, await listIdentities(env.DB, session.userId)), now))) {
+      if (!(await updateDraft(env.DB, session.userId, draftId, draftFields(body, await listIdentities(env.DB, session.userId)), now))) {
         throw new HttpError(409, "This draft was already sent or deleted.");
       }
       await putBody(env, draftId, body);
@@ -340,9 +308,9 @@ const routes: Route[] = [
     path: "/api/drafts/:id",
     handler: async ({ request, env, params }) => {
       const session = await requireSession(request, env);
-      const draft = await requireDraft(env, param(params.id));
+      const draft = await requireDraft(env, session, param(params.id));
       const rows = await attachmentsOf(env.DB, draft.id);
-      await env.DB.batch([deleteDraftStatement(env.DB, draft.id), auditStatement(env.DB, session.email, "draft.deleted", { id: draft.id })]);
+      await env.DB.batch([deleteDraftStatement(env.DB, session.userId, draft.id), auditStatement(env.DB, session.email, "draft.deleted", { id: draft.id })]);
       await env.MAIL.delete([bodyKey(draft.id), ...rows.flatMap((row) => [row.r2_key, base64Key(row.r2_key)])]);
       return json({ ok: true });
     },
@@ -351,8 +319,8 @@ const routes: Route[] = [
     method: "POST",
     path: "/api/drafts/:id/attachments",
     handler: async ({ request, env, params }) => {
-      await requireSession(request, env);
-      const draft = await requireDraft(env, param(params.id));
+      const session = await requireSession(request, env);
+      const draft = await requireDraft(env, session, param(params.id));
       const length = Number(request.headers.get("content-length"));
       if (!Number.isFinite(length) || length <= 0) throw new HttpError(411, "Content-Length required");
       const used = (await attachmentsOf(env.DB, draft.id)).reduce((sum, row) => sum + row.size_bytes, 0);
@@ -385,8 +353,8 @@ const routes: Route[] = [
     method: "DELETE",
     path: "/api/drafts/:id/attachments/:attachmentId",
     handler: async ({ request, env, params }) => {
-      await requireSession(request, env);
-      const draft = await requireDraft(env, param(params.id));
+      const session = await requireSession(request, env);
+      const draft = await requireDraft(env, session, param(params.id));
       const attachmentId = param(params.attachmentId);
       const row = (await attachmentsOf(env.DB, draft.id)).find((a) => a.id === attachmentId);
       if (!row) throw new HttpError(404, "Attachment not found");
@@ -400,8 +368,10 @@ const routes: Route[] = [
     method: "GET",
     path: "/api/messages/:id/body",
     handler: async ({ request, env, params }) => {
-      await requireSession(request, env);
-      const row = await env.DB.prepare("SELECT html_key FROM messages WHERE id = ? AND deleted_at IS NULL").bind(param(params.id)).first<{ html_key: string | null }>();
+      const session = await requireSession(request, env);
+      const row = await env.DB.prepare("SELECT html_key FROM messages WHERE id = ? AND user_id = ? AND deleted_at IS NULL")
+        .bind(param(params.id), session.userId)
+        .first<{ html_key: string | null }>();
       const object = row?.html_key ? await env.MAIL.get(row.html_key) : null;
       if (!object) throw new HttpError(404, "Message body not found");
       return new Response(object.body, { headers: { "content-type": "application/json", "content-length": String(object.size) } });

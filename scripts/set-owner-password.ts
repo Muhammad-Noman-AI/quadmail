@@ -58,7 +58,9 @@ async function main() {
   const now = Date.now();
   executeSql(
     [
-      `INSERT INTO users (id, email, password_hash, created_at) VALUES (${sql(ulid())}, ${sql(email)}, ${sql(hash)}, ${now}) ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash;`,
+      // The owner is always an active admin, so this script also recovers a locked-out admin.
+      `INSERT INTO users (id, email, password_hash, created_at, role) VALUES (${sql(ulid())}, ${sql(email)}, ${sql(hash)}, ${now}, 'admin') ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, role = 'admin', disabled = 0, must_change_password = 0;`,
+      `INSERT OR IGNORE INTO identities (id, user_id, address, is_default) SELECT ${sql(ulid())}, id, lower(email), NOT EXISTS (SELECT 1 FROM identities WHERE user_id = users.id AND is_default = 1) FROM users WHERE email = ${sql(email)};`,
       `DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE email = ${sql(email)});`,
       `INSERT INTO audit_log (id, at, actor, action, detail_json) VALUES (${sql(ulid())}, ${now}, 'script', 'password.set', ${sql(JSON.stringify({ email }))});`,
     ],

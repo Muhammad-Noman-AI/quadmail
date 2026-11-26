@@ -1,7 +1,7 @@
 // Track A (Phase 3): raw message fetch, parsed-result write-back, attachments, reprocess.
 import { z } from "zod";
 import { SEARCH_TEXT_MAX_BYTES, SNIPPET_MAX_CHARS } from "../../shared/types";
-import { requireSession } from "../auth/session";
+import { requireSession, type Session } from "../auth/session";
 import { HttpError, json } from "../http";
 import { normalizeSubject } from "../inbound/headers";
 import { capChars, capUtf8 } from "../../shared/text";
@@ -52,8 +52,8 @@ function validId(id: string | undefined): string {
   return id;
 }
 
-async function loadMessage({ env, params }: RouteContext): Promise<MessageRef> {
-  const ref = await getMessageRef(env.DB, validId(params.id));
+async function loadMessage({ env, params }: RouteContext, session: Session): Promise<MessageRef> {
+  const ref = await getMessageRef(env.DB, session.userId, validId(params.id));
   if (!ref) throw new HttpError(404, "Message not found");
   return ref;
 }
@@ -84,17 +84,17 @@ export const inboundRoutes: Route[] = [
     method: "GET",
     path: "/api/inbound/pending",
     handler: async (context) => {
-      await requireSession(context.request, context.env);
+      const session = await requireSession(context.request, context.env);
       const limit = Math.min(Math.max(Number(context.url.searchParams.get("limit")) || 10, 1), 50);
-      return json({ ids: await pendingIds(context.env.DB, limit) });
+      return json({ ids: await pendingIds(context.env.DB, session.userId, limit) });
     },
   },
   {
     method: "GET",
     path: "/api/messages/:id/raw",
     handler: async (context) => {
-      await requireSession(context.request, context.env);
-      const ref = await loadMessage(context);
+      const session = await requireSession(context.request, context.env);
+      const ref = await loadMessage(context, session);
       if (!ref.rawKey) throw new HttpError(404, "No raw message");
       const object = await context.env.MAIL.get(ref.rawKey);
       if (!object) throw new HttpError(404, "Raw message missing from storage");
@@ -107,8 +107,8 @@ export const inboundRoutes: Route[] = [
     method: "POST",
     path: "/api/messages/:id/parsed",
     handler: async (context) => {
-      await requireSession(context.request, context.env);
-      const ref = await loadMessage(context);
+      const session = await requireSession(context.request, context.env);
+      const ref = await loadMessage(context, session);
       const body = await readJson(context.request, parsedBodySchema);
       await saveParsed(
         context.env.DB,
@@ -131,8 +131,8 @@ export const inboundRoutes: Route[] = [
     method: "PUT",
     path: "/api/messages/:id/attachments/:attachmentId",
     handler: async (context) => {
-      await requireSession(context.request, context.env);
-      const ref = await loadMessage(context);
+      const session = await requireSession(context.request, context.env);
+      const ref = await loadMessage(context, session);
       const attachmentId = validId(context.params.attachmentId);
       const { request } = context;
       const length = Number(request.headers.get("content-length"));
@@ -161,8 +161,8 @@ export const inboundRoutes: Route[] = [
     method: "GET",
     path: "/api/attachments/:id",
     handler: async (context) => {
-      await requireSession(context.request, context.env);
-      const attachment = await getAttachment(context.env.DB, validId(context.params.id));
+      const session = await requireSession(context.request, context.env);
+      const attachment = await getAttachment(context.env.DB, session.userId, validId(context.params.id));
       if (!attachment) throw new HttpError(404, "Attachment not found");
       const object = await context.env.MAIL.get(attachment.r2Key);
       if (!object) throw new HttpError(404, "Attachment missing from storage");
@@ -181,8 +181,8 @@ export const inboundRoutes: Route[] = [
     method: "POST",
     path: "/api/messages/:id/parse-failed",
     handler: async (context) => {
-      await requireSession(context.request, context.env);
-      const ref = await loadMessage(context);
+      const session = await requireSession(context.request, context.env);
+      const ref = await loadMessage(context, session);
       const body = await readJson(context.request, parseFailedSchema);
       await markParseFailed(context.env.DB, ref.id, capChars(body.error, 500));
       return json({ ok: true });
@@ -192,9 +192,9 @@ export const inboundRoutes: Route[] = [
     method: "POST",
     path: "/api/messages/:id/reprocess",
     handler: async (context) => {
-      await requireSession(context.request, context.env);
+      const session = await requireSession(context.request, context.env);
       const id = validId(context.params.id);
-      if (!(await markPending(context.env.DB, id))) throw new HttpError(404, "Message not found");
+      if (!(await markPending(context.env.DB, session.userId, id))) throw new HttpError(404, "Message not found");
       return json({ ok: true });
     },
   },

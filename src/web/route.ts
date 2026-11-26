@@ -1,4 +1,4 @@
-// Hash routing: #/inbox, #/inbox/<messageId>, #/starred, #/label/<id>, #/search/<query>, #/settings
+// Hash routing: #/inbox, #/inbox/<messageId>, #/starred, #/label/<id>, #/search/<query>, #/settings, #/team
 import { useEffect, useState } from "react";
 import { FOLDERS, type Folder } from "../shared/types";
 
@@ -7,7 +7,8 @@ export type View =
   | { kind: "starred" }
   | { kind: "label"; labelId: string }
   | { kind: "search"; query: string }
-  | { kind: "settings" };
+  | { kind: "settings" }
+  | { kind: "team" };
 
 export interface Route {
   view: View;
@@ -19,6 +20,7 @@ const ID = /^[0-9A-Z]{26}$/;
 export function parseHash(hash: string): Route {
   const [first = "inbox", second, third] = hash.replace(/^#\/?/, "").split("/");
   if (first === "settings") return { view: { kind: "settings" }, messageId: null };
+  if (first === "team") return { view: { kind: "team" }, messageId: null };
   if (first === "starred") return { view: { kind: "starred" }, messageId: second && ID.test(second) ? second : null };
   if (first === "label" && second && ID.test(second)) return { view: { kind: "label", labelId: second }, messageId: third && ID.test(third) ? third : null };
   if (first === "search" && second !== undefined) {
@@ -38,7 +40,9 @@ export function viewHash(view: View, messageId?: string | null): string {
           ? `#/label/${view.labelId}`
           : view.kind === "search"
             ? `#/search/${encodeURIComponent(view.query)}`
-            : "#/settings";
+            : view.kind === "team"
+              ? "#/team"
+              : "#/settings";
   return messageId ? `${base}/${messageId}` : base;
 }
 

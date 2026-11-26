@@ -18,34 +18,47 @@ export function idFromRawKey(key: string): string | null {
   return match ? match[1]! : null;
 }
 
-export async function isBlockedSender(db: D1Database, addresses: string[]): Promise<boolean> {
+/**
+ * Owner of mail sent to `address` (one bound parameter): the active user who has that address as an
+ * identity, otherwise the first active admin (catch-all, and mail for disabled users).
+ */
+const OWNER_SQL = `COALESCE(
+  (SELECT i.user_id FROM identities i JOIN users u ON u.id = i.user_id WHERE i.address = ? AND u.disabled = 0),
+  (SELECT id FROM users WHERE role = 'admin' AND disabled = 0 ORDER BY created_at LIMIT 1))`;
+
+export async function resolveRecipientOwner(db: D1Database, address: string): Promise<string | null> {
+  const row = await db.prepare(`SELECT ${OWNER_SQL} AS user_id`).bind(address.toLowerCase()).first<{ user_id: string | null }>();
+  return row?.user_id ?? null;
+}
+
+export async function isBlockedSender(db: D1Database, userId: string, addresses: string[]): Promise<boolean> {
   const list = [...new Set(addresses.filter(Boolean).map((a) => a.toLowerCase()))];
   if (list.length === 0) return false;
   const placeholders = list.map(() => "?").join(", ");
-  const row = await db.prepare(`SELECT 1 AS hit FROM blocked_senders WHERE address IN (${placeholders}) LIMIT 1`).bind(...list).first();
+  const row = await db.prepare(`SELECT 1 AS hit FROM blocked_senders WHERE user_id = ? AND address IN (${placeholders}) LIMIT 1`).bind(userId, ...list).first();
   return row != null;
 }
 
-export async function findThreadByMessageIds(db: D1Database, ids: string[]): Promise<string | null> {
+export async function findThreadByMessageIds(db: D1Database, userId: string, ids: string[]): Promise<string | null> {
   if (ids.length === 0) return null;
   const placeholders = ids.map(() => "?").join(", ");
   const row = await db
-    .prepare(`SELECT thread_id FROM messages WHERE message_id_hdr IN (${placeholders}) AND thread_id IS NOT NULL ORDER BY received_at DESC LIMIT 1`)
-    .bind(...ids)
+    .prepare(`SELECT thread_id FROM messages WHERE user_id = ? AND message_id_hdr IN (${placeholders}) AND thread_id IS NOT NULL ORDER BY received_at DESC LIMIT 1`)
+    .bind(userId, ...ids)
     .first<{ thread_id: string }>();
   return row?.thread_id ?? null;
 }
 
-export async function findSubjectCandidates(db: D1Database, subjectNorm: string, since: number): Promise<SubjectCandidate[]> {
+export async function findSubjectCandidates(db: D1Database, userId: string, subjectNorm: string, since: number): Promise<SubjectCandidate[]> {
   if (!subjectNorm) return [];
   const { results } = await db
     .prepare(
       `SELECT t.id AS thread_id, t.last_message_at, m.from_addr, m.envelope_from, m.envelope_to, m.to_json
        FROM threads t JOIN messages m ON m.thread_id = t.id
-       WHERE t.subject_norm = ? AND t.last_message_at >= ?
+       WHERE t.subject_norm = ? AND t.last_message_at >= ? AND m.user_id = ?
        ORDER BY t.last_message_at DESC LIMIT 50`,
     )
-    .bind(subjectNorm, since)
+    .bind(subjectNorm, since, userId)
     .all<{ thread_id: string; last_message_at: number; from_addr: string | null; envelope_from: string | null; envelope_to: string | null; to_json: string | null }>();
   const byThread = new Map<string, SubjectCandidate>();
   for (const row of results) {
@@ -69,6 +82,8 @@ function parseAddressJson(value: string | null): Address[] {
 
 export interface InboundRow {
   id: string;
+  /** Owner; null resolves it in SQL from envelopeTo (reconcile). */
+  userId: string | null;
   threadId: string | null;
   folder: "inbox" | "spam";
   messageIdHdr: string | null;
@@ -91,8 +106,8 @@ function messageInsert(db: D1Database, row: InboundRow): D1PreparedStatement {
     .prepare(
       `INSERT OR IGNORE INTO messages (id, thread_id, direction, folder, message_id_hdr, in_reply_to, references_json,
          envelope_from, envelope_to, from_addr, from_name, to_json, cc_json, subject, raw_key, size_bytes,
-         auth_results, parse_status, received_at)
-       VALUES (?, ?, 'in', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+         auth_results, parse_status, received_at, user_id)
+       VALUES (?, ?, 'in', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, COALESCE(?, ${OWNER_SQL}))`,
     )
     .bind(
       row.id,
@@ -112,6 +127,8 @@ function messageInsert(db: D1Database, row: InboundRow): D1PreparedStatement {
       row.sizeBytes,
       row.authResults,
       row.receivedAt,
+      row.userId,
+      row.envelopeTo ?? "",
     );
 }
 
@@ -129,6 +146,7 @@ export async function insertInbound(db: D1Database, row: InboundRow & { threadId
 export function reconcileInsert(db: D1Database, row: { id: string; rawKey: string; sizeBytes: number; receivedAt: number; envelopeFrom: string | null; envelopeTo: string | null }): D1PreparedStatement {
   return messageInsert(db, {
     ...row,
+    userId: null,
     threadId: null,
     folder: "inbox",
     messageIdHdr: null,
@@ -163,10 +181,10 @@ export interface MessageRef {
   parseStatus: "pending" | "done" | "failed";
 }
 
-export async function getMessageRef(db: D1Database, id: string): Promise<MessageRef | null> {
+export async function getMessageRef(db: D1Database, userId: string, id: string): Promise<MessageRef | null> {
   const row = await db
-    .prepare(`SELECT id, thread_id, raw_key, parse_status FROM messages WHERE id = ? AND deleted_at IS NULL`)
-    .bind(id)
+    .prepare(`SELECT id, thread_id, raw_key, parse_status FROM messages WHERE id = ? AND user_id = ? AND deleted_at IS NULL`)
+    .bind(id, userId)
     .first<{ id: string; thread_id: string | null; raw_key: string | null; parse_status: MessageRef["parseStatus"] }>();
   return row ? { id: row.id, threadId: row.thread_id, rawKey: row.raw_key, parseStatus: row.parse_status } : null;
 }
@@ -212,15 +230,18 @@ export async function markParseFailed(db: D1Database, id: string, error: string)
   await db.prepare(`UPDATE messages SET parse_status = 'failed', parse_error = ? WHERE id = ?`).bind(error, id).run();
 }
 
-export async function markPending(db: D1Database, id: string): Promise<boolean> {
-  const result = await db.prepare(`UPDATE messages SET parse_status = 'pending', parse_error = NULL WHERE id = ? AND deleted_at IS NULL`).bind(id).run();
+export async function markPending(db: D1Database, userId: string, id: string): Promise<boolean> {
+  const result = await db
+    .prepare(`UPDATE messages SET parse_status = 'pending', parse_error = NULL WHERE id = ? AND user_id = ? AND deleted_at IS NULL AND raw_key IS NOT NULL`)
+    .bind(id, userId)
+    .run();
   return result.meta.changes > 0;
 }
 
-export async function pendingIds(db: D1Database, limit: number): Promise<string[]> {
+export async function pendingIds(db: D1Database, userId: string, limit: number): Promise<string[]> {
   const { results } = await db
-    .prepare(`SELECT id FROM messages WHERE parse_status = 'pending' AND deleted_at IS NULL AND raw_key IS NOT NULL ORDER BY received_at DESC LIMIT ?`)
-    .bind(limit)
+    .prepare(`SELECT id FROM messages WHERE user_id = ? AND parse_status = 'pending' AND deleted_at IS NULL AND raw_key IS NOT NULL ORDER BY received_at DESC LIMIT ?`)
+    .bind(userId, limit)
     .all<{ id: string }>();
   return results.map((r) => r.id);
 }
@@ -241,13 +262,13 @@ export async function upsertAttachment(db: D1Database, messageId: string, meta: 
   await db.batch(statements);
 }
 
-export async function getAttachment(db: D1Database, id: string): Promise<{ r2Key: string; filename: string | null; contentType: string | null } | null> {
+export async function getAttachment(db: D1Database, userId: string, id: string): Promise<{ r2Key: string; filename: string | null; contentType: string | null } | null> {
   const row = await db
     .prepare(
       `SELECT a.r2_key, a.filename, a.content_type FROM attachments a JOIN messages m ON m.id = a.message_id
-       WHERE a.id = ? AND m.deleted_at IS NULL`,
+       WHERE a.id = ? AND m.user_id = ? AND m.deleted_at IS NULL`,
     )
-    .bind(id)
+    .bind(id, userId)
     .first<{ r2_key: string; filename: string | null; content_type: string | null }>();
   return row ? { r2Key: row.r2_key, filename: row.filename, contentType: row.content_type } : null;
 }

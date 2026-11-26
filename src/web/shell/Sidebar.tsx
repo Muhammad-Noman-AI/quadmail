@@ -32,6 +32,7 @@ export function Sidebar({
   counts,
   onLabelsChanged,
   onCompose,
+  isAdmin,
   className = "",
 }: {
   view: View;
@@ -39,6 +40,7 @@ export function Sidebar({
   counts: Record<string, number>;
   onLabelsChanged: () => void;
   onCompose: () => void;
+  isAdmin: boolean;
   className?: string;
 }) {
   const [adding, setAdding] = useState(false);
@@ -118,9 +120,16 @@ export function Sidebar({
           {!labels.length && !adding && <li className="px-3 text-xs text-neutral-400">No labels yet</li>}
         </ul>
       </div>
-      <a href="#/settings" className={`${item(view.kind === "settings")} mt-auto`}>
-        Settings
-      </a>
+      <div className="mt-auto space-y-0.5">
+        {isAdmin && (
+          <a href="#/team" className={item(view.kind === "team")}>
+            Team
+          </a>
+        )}
+        <a href="#/settings" className={item(view.kind === "settings")}>
+          Settings
+        </a>
+      </div>
     </nav>
   );
 }

@@ -1,4 +1,4 @@
-// Track B (Phase 4): message lists, threads, search, folder actions, labels, blocked senders.
+// Message lists, threads, search, folder actions, labels, blocked senders. All scoped to the signed-in user.
 import { z } from "zod";
 import { FOLDERS, type Folder } from "../../shared/types";
 import { ulid } from "../../shared/ulid";
@@ -47,23 +47,25 @@ const routes: Route[] = [
     path: "/api/me",
     handler: async ({ request, env }) => {
       const session = await requireSession(request, env);
-      const user = await env.DB.prepare("SELECT totp_secret_enc IS NOT NULL AS totp FROM users WHERE id = ?").bind(session.userId).first<{ totp: number }>();
-      return json({ email: session.email, totpEnabled: user?.totp === 1 });
+      const user = await env.DB.prepare("SELECT totp_secret_enc IS NOT NULL AS totp, display_name FROM users WHERE id = ?")
+        .bind(session.userId)
+        .first<{ totp: number; display_name: string | null }>();
+      return json({ id: session.userId, email: session.email, displayName: user?.display_name ?? null, role: session.role, mustChangePassword: session.mustChangePassword, totpEnabled: user?.totp === 1 });
     },
   },
   {
     method: "GET",
     path: "/api/counts",
     handler: async ({ request, env }) => {
-      await requireSession(request, env);
-      return json(await folderCounts(env.DB));
+      const session = await requireSession(request, env);
+      return json(await folderCounts(env.DB, session.userId));
     },
   },
   {
     method: "GET",
     path: "/api/messages",
     handler: async ({ request, env, url }) => {
-      await requireSession(request, env);
+      const session = await requireSession(request, env);
       const q = url.searchParams;
       const folderValue = folder.safeParse(q.get("folder") ?? "inbox");
       if (!folderValue.success) throw new HttpError(400, "Invalid folder");
@@ -74,6 +76,7 @@ const routes: Route[] = [
       const limit = Math.min(Math.max(Number(q.get("limit")) || 50, 1), 100);
       return json(
         await listMessages(env.DB, {
+          userId: session.userId,
           folder: folderValue.data,
           labelId: label ? param(label) : undefined,
           starred: q.get("starred") === "1",
@@ -89,7 +92,7 @@ const routes: Route[] = [
     handler: async ({ request, env }) => {
       const session = await requireSession(request, env);
       const body = await readJson(request, (v) => bulkBody.parse(v));
-      const statements = bulkUpdateStatements(env.DB, body);
+      const statements = bulkUpdateStatements(env.DB, session.userId, body);
       if (body.folder === "trash") statements.push(auditStatement(env.DB, session.email, "messages.trash", { count: body.ids.length }));
       await env.DB.batch(statements);
       return json({ ok: true });
@@ -99,8 +102,8 @@ const routes: Route[] = [
     method: "GET",
     path: "/api/messages/:id",
     handler: async ({ request, env, params }) => {
-      await requireSession(request, env);
-      const message = await getMessage(env.DB, param(params.id));
+      const session = await requireSession(request, env);
+      const message = await getMessage(env.DB, session.userId, param(params.id));
       if (!message) throw new HttpError(404, "Message not found");
       return json(message);
     },
@@ -111,12 +114,12 @@ const routes: Route[] = [
     handler: async ({ request, env, params }) => {
       const session = await requireSession(request, env);
       const messageId = param(params.id);
-      const row = await env.DB.prepare("SELECT from_addr FROM messages WHERE id = ?").bind(messageId).first<{ from_addr: string | null }>();
+      const row = await env.DB.prepare("SELECT from_addr FROM messages WHERE id = ? AND user_id = ?").bind(messageId, session.userId).first<{ from_addr: string | null }>();
       if (!row?.from_addr) throw new HttpError(404, "Sender not found");
       const address = row.from_addr.toLowerCase();
       await env.DB.batch([
-        env.DB.prepare("INSERT OR IGNORE INTO blocked_senders (address, created_at) VALUES (?, ?)").bind(address, Date.now()),
-        env.DB.prepare("UPDATE messages SET folder = 'spam' WHERE from_addr = ? COLLATE NOCASE AND folder = 'inbox'").bind(address),
+        env.DB.prepare("INSERT OR IGNORE INTO blocked_senders (user_id, address, created_at) VALUES (?, ?, ?)").bind(session.userId, address, Date.now()),
+        env.DB.prepare("UPDATE messages SET folder = 'spam' WHERE user_id = ? AND from_addr = ? COLLATE NOCASE AND folder = 'inbox'").bind(session.userId, address),
         auditStatement(env.DB, session.email, "sender.blocked", { address }),
       ]);
       return json({ ok: true, address });
@@ -126,8 +129,8 @@ const routes: Route[] = [
     method: "GET",
     path: "/api/threads/:id",
     handler: async ({ request, env, params }) => {
-      await requireSession(request, env);
-      const messages = await getThread(env.DB, param(params.id));
+      const session = await requireSession(request, env);
+      const messages = await getThread(env.DB, session.userId, param(params.id));
       if (!messages.length) throw new HttpError(404, "Thread not found");
       return json({ id: params.id, messages });
     },
@@ -136,18 +139,18 @@ const routes: Route[] = [
     method: "GET",
     path: "/api/search",
     handler: async ({ request, env, url }) => {
-      await requireSession(request, env);
+      const session = await requireSession(request, env);
       const q = (url.searchParams.get("q") ?? "").slice(0, 500);
       const query = parseSearch(q);
-      return json({ items: await searchMessages(env.DB, query) });
+      return json({ items: await searchMessages(env.DB, session.userId, query) });
     },
   },
   {
     method: "GET",
     path: "/api/labels",
     handler: async ({ request, env }) => {
-      await requireSession(request, env);
-      const { results } = await env.DB.prepare("SELECT id, name, color FROM labels ORDER BY name COLLATE NOCASE").all();
+      const session = await requireSession(request, env);
+      const { results } = await env.DB.prepare("SELECT id, name, color FROM labels WHERE user_id = ? ORDER BY name COLLATE NOCASE").bind(session.userId).all();
       return json({ items: results });
     },
   },
@@ -160,7 +163,7 @@ const routes: Route[] = [
       const label = { id: ulid(), name: body.name, color: body.color ?? null };
       try {
         await env.DB.batch([
-          env.DB.prepare("INSERT INTO labels (id, name, color) VALUES (?, ?, ?)").bind(label.id, label.name, label.color),
+          env.DB.prepare("INSERT INTO labels (id, user_id, name, color) VALUES (?, ?, ?, ?)").bind(label.id, session.userId, label.name, label.color),
           auditStatement(env.DB, session.email, "label.created", { id: label.id }),
         ]);
       } catch {
@@ -173,11 +176,11 @@ const routes: Route[] = [
     method: "PATCH",
     path: "/api/labels/:id",
     handler: async ({ request, env, params }) => {
-      await requireSession(request, env);
+      const session = await requireSession(request, env);
       const labelId = param(params.id);
       const body = await readJson(request, (v) => labelPatch.parse(v));
-      await env.DB.prepare("UPDATE labels SET name = COALESCE(?, name), color = CASE WHEN ? THEN ? ELSE color END WHERE id = ?")
-        .bind(body.name ?? null, body.color !== undefined ? 1 : 0, body.color ?? null, labelId)
+      await env.DB.prepare("UPDATE labels SET name = COALESCE(?, name), color = CASE WHEN ? THEN ? ELSE color END WHERE id = ? AND user_id = ?")
+        .bind(body.name ?? null, body.color !== undefined ? 1 : 0, body.color ?? null, labelId, session.userId)
         .run();
       return json({ ok: true });
     },
@@ -189,7 +192,7 @@ const routes: Route[] = [
       const session = await requireSession(request, env);
       const labelId = param(params.id);
       await env.DB.batch([
-        env.DB.prepare("DELETE FROM labels WHERE id = ?").bind(labelId),
+        env.DB.prepare("DELETE FROM labels WHERE id = ? AND user_id = ?").bind(labelId, session.userId),
         auditStatement(env.DB, session.email, "label.deleted", { id: labelId }),
       ]);
       return json({ ok: true });
@@ -199,8 +202,10 @@ const routes: Route[] = [
     method: "GET",
     path: "/api/blocked-senders",
     handler: async ({ request, env }) => {
-      await requireSession(request, env);
-      const { results } = await env.DB.prepare("SELECT address, created_at AS createdAt FROM blocked_senders ORDER BY created_at DESC").all();
+      const session = await requireSession(request, env);
+      const { results } = await env.DB.prepare("SELECT address, created_at AS createdAt FROM blocked_senders WHERE user_id = ? ORDER BY created_at DESC")
+        .bind(session.userId)
+        .all();
       return json({ items: results });
     },
   },
@@ -211,7 +216,7 @@ const routes: Route[] = [
       const session = await requireSession(request, env);
       const address = (params.address ?? "").toLowerCase();
       await env.DB.batch([
-        env.DB.prepare("DELETE FROM blocked_senders WHERE address = ?").bind(address),
+        env.DB.prepare("DELETE FROM blocked_senders WHERE user_id = ? AND address = ?").bind(session.userId, address),
         auditStatement(env.DB, session.email, "sender.unblocked", { address }),
       ]);
       return json({ ok: true });

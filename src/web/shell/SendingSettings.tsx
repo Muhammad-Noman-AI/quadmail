@@ -1,7 +1,7 @@
 // Settings → identities (From addresses, names, signatures) and suppressed recipients.
 import { useEffect, useState, type FormEvent } from "react";
 import type { Identity, SendingInfo } from "../../shared/types";
-import { api, ApiError } from "../api";
+import { api, ApiError, type Me } from "../api";
 import { textToHtml } from "../compose/html";
 import { htmlToText } from "../mail/text";
 
@@ -14,7 +14,7 @@ interface Suppression {
 const input = "rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
 const link = "text-xs text-blue-600 hover:underline";
 
-function IdentityRow({ identity, onSaved, onError }: { identity: Identity; onSaved: () => void; onError: (text: string) => void }) {
+function IdentityRow({ identity, canRemove, removePath, onSaved, onError }: { identity: Identity; canRemove: boolean; removePath: string; onSaved: () => void; onError: (text: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(identity.displayName ?? "");
   const [signature, setSignature] = useState(() => htmlToText(identity.signatureHtml ?? "").trim());
@@ -45,7 +45,7 @@ function IdentityRow({ identity, onSaved, onError }: { identity: Identity; onSav
         <span className="flex gap-3">
           <button className={link} onClick={() => setEditing((v) => !v)}>{editing ? "Cancel" : "Edit"}</button>
           {!identity.isDefault && <button className={link} onClick={() => call(`/api/identities/${identity.id}`, "PATCH", { isDefault: true })}>Make default</button>}
-          {!identity.isDefault && <button className="text-xs text-red-600 hover:underline" onClick={() => call(`/api/identities/${identity.id}`, "DELETE")}>Delete</button>}
+          {!identity.isDefault && canRemove && <button className="text-xs text-red-600 hover:underline" onClick={() => call(removePath, "DELETE")}>Remove</button>}
         </span>
       </div>
       {editing && (
@@ -59,7 +59,8 @@ function IdentityRow({ identity, onSaved, onError }: { identity: Identity; onSav
   );
 }
 
-export function SendingSettings() {
+export function SendingSettings({ me }: { me: Me }) {
+  const isAdmin = me.role === "admin";
   const [info, setInfo] = useState<SendingInfo | null>(null);
   const [suppressed, setSuppressed] = useState<Suppression[]>([]);
   const [address, setAddress] = useState("");
@@ -75,7 +76,7 @@ export function SendingSettings() {
     event.preventDefault();
     setError(null);
     try {
-      await api("/api/identities", { body: { address: address.trim() } });
+      await api(`/api/team/${me.id}/addresses`, { body: { address: address.trim() } });
       setAddress("");
       load();
     } catch (err) {
@@ -104,13 +105,21 @@ export function SendingSettings() {
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{error}</p>}
         <ul className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 text-sm dark:divide-neutral-800 dark:border-neutral-800">
           {info?.identities.map((identity) => (
-            <IdentityRow key={`${identity.id}:${identity.displayName}:${identity.signatureHtml}`} identity={identity} onSaved={load} onError={setError} />
+            <IdentityRow
+              key={`${identity.id}:${identity.displayName}:${identity.signatureHtml}`}
+              identity={identity}
+              canRemove={isAdmin && identity.address.toLowerCase() !== me.email.toLowerCase()}
+              removePath={`/api/team/${me.id}/addresses/${identity.id}`}
+              onSaved={load}
+              onError={setError}
+            />
           ))}
         </ul>
-        <form onSubmit={add} className="flex flex-wrap gap-2">
+        {!isAdmin && <p className="text-xs text-neutral-500">To get another address (like sales@), ask your admin.</p>}
+        {isAdmin && <form onSubmit={add} className="flex flex-wrap gap-2">
           <input className={input} type="email" required placeholder={`sales@${info?.allowedDomains[0] ?? "example.com"}`} value={address} onChange={(e) => setAddress(e.target.value)} />
           <button className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">Add address</button>
-        </form>
+        </form>}
       </div>
 
       <div className="space-y-2">

@@ -175,7 +175,7 @@ const messageIds = new Map<string, string>();
 const headerIds = new Map<string, string>();
 const statements: string[] = [];
 
-for (const [name, id] of labelIds) statements.push(`INSERT OR IGNORE INTO labels (id, name, color) VALUES (${sql(id)}, ${sql(name)}, ${sql(labelColors[name]!)});`);
+for (const [name, id] of labelIds) statements.push(`INSERT OR IGNORE INTO labels (id, user_id, name, color) VALUES (${sql(id)}, (SELECT id FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1), ${sql(name)}, ${sql(labelColors[name]!)});`);
 
 for (const sample of samples) {
   const receivedAt = now - sample.hoursAgo * HOUR;
@@ -201,7 +201,7 @@ for (const sample of samples) {
 
   const snippet = sample.text.replace(/\s+/g, " ").trim().slice(0, 200);
   statements.push(
-    `INSERT INTO messages (id, thread_id, direction, folder, message_id_hdr, in_reply_to, references_json, envelope_from, envelope_to, from_addr, from_name, to_json, cc_json, subject, snippet, search_text, raw_key, size_bytes, has_attachments, is_read, is_starred, parse_status, received_at, sent_at) VALUES (` +
+    `INSERT INTO messages (id, thread_id, direction, folder, message_id_hdr, in_reply_to, references_json, envelope_from, envelope_to, from_addr, from_name, to_json, cc_json, subject, snippet, search_text, raw_key, size_bytes, has_attachments, is_read, is_starred, parse_status, received_at, sent_at, user_id) VALUES (` +
       [
         sql(id),
         sql(threadId),
@@ -227,6 +227,8 @@ for (const sample of samples) {
         sql("done"),
         receivedAt,
         sql(sample.direction === "out" ? receivedAt : null),
+        // Seed mail belongs to the admin (run `pnpm owner:password` first).
+        "(SELECT id FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1)",
       ].join(", ") +
       ");",
   );

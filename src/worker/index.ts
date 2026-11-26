@@ -7,6 +7,7 @@ import { authRoutes } from "./routes/auth";
 import { inboundRoutes } from "./routes/inbound";
 import { mailRoutes } from "./routes/mail";
 import { sendRoutes } from "./routes/send";
+import { teamRoutes } from "./routes/team";
 import { handleScheduled } from "./scheduled";
 
 const routes: Route[] = [
@@ -22,6 +23,7 @@ const routes: Route[] = [
   ...mailRoutes,
   ...inboundRoutes,
   ...sendRoutes,
+  ...teamRoutes,
 ];
 
 export default {

@@ -11,6 +11,7 @@ import { applyPatch, patchMessages, type MessagePatch } from "./actions";
 import { MessageList } from "./MessageList";
 import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
+import { Team } from "./Team";
 
 interface ComposeState {
   /** Remounts the composer for each new message. */
@@ -55,8 +56,10 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
     [viewKey],
   );
 
+  const pageView = view.kind === "settings" || view.kind === "team";
+
   const reload = useCallback(() => {
-    if (view.kind === "settings") return;
+    if (view.kind === "settings" || view.kind === "team") return;
     const url = listUrl();
     api<Page>(url)
       .then((result) => setPage({ items: result.items, nextCursor: result.nextCursor ?? null }))
@@ -155,7 +158,7 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
   }
 
   // Loading until the response for the current list URL has arrived.
-  const loading = view.kind !== "settings" && loadedUrl !== listUrl();
+  const loading = !pageView && loadedUrl !== listUrl();
   const selected = page.items.find((m) => m.id === messageId) ?? null;
 
   return (
@@ -204,10 +207,13 @@ export function Shell({ me, onSignedOut, onMeChanged }: { me: Me; onSignedOut: (
           counts={counts}
           onLabelsChanged={refreshMeta}
           onCompose={() => openCompose(null)}
+          isAdmin={me.role === "admin"}
           className={messageId || compose ? "hidden lg:flex" : "hidden md:flex"}
         />
         {view.kind === "settings" ? (
           <Settings me={me} onChanged={onMeChanged} onSignedOut={onSignedOut} />
+        ) : view.kind === "team" ? (
+          me.role === "admin" ? <Team me={me} /> : <p className="p-6 text-sm text-neutral-500">Only an admin can manage the team.</p>
         ) : (
           <>
             <MessageList

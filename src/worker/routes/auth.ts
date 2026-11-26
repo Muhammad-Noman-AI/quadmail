@@ -1,7 +1,7 @@
 // Track B (Phase 4): login, logout, TOTP, session info.
 import { z } from "zod";
 import { decryptString, encryptString } from "../auth/crypto";
-import { verifyPasswordKey } from "../auth/password";
+import { hashPasswordKey, verifyPasswordKey } from "../auth/password";
 import { attemptKeys, clearAccount, isLimited, recordFailure } from "../auth/rate-limit";
 import { audit, auditStatement, readJson, secured } from "../auth/respond";
 import {
@@ -25,17 +25,20 @@ const totpCode = z.string().regex(/^\d{6}$/);
 const loginBody = z.object({ email: z.email().max(254), passwordKey, totp: totpCode.optional() });
 const enableBody = z.object({ secret: z.string().regex(/^[A-Z2-7]{32}$/), code: totpCode });
 const disableBody = z.object({ passwordKey, code: totpCode });
+const passwordBody = z.object({ currentKey: passwordKey, newKey: passwordKey }).refine((b) => b.currentKey !== b.newKey, "same password");
 
 interface UserRow {
   id: string;
   email: string;
   password_hash: string;
   totp_secret_enc: string | null;
+  disabled: number;
+  must_change_password: number;
 }
 
 async function loadUser(db: D1Database, by: { email?: string; id?: string }): Promise<UserRow | null> {
   const [column, value] = by.id ? ["id", by.id] : ["email", by.email ?? ""];
-  return db.prepare(`SELECT id, email, password_hash, totp_secret_enc FROM users WHERE ${column} = ?`).bind(value).first<UserRow>();
+  return db.prepare(`SELECT id, email, password_hash, totp_secret_enc, disabled, must_change_password FROM users WHERE ${column} = ?`).bind(value).first<UserRow>();
 }
 
 function totpKey(env: Env): string {
@@ -59,7 +62,8 @@ const routes: Route[] = [
 
       const user = await loadUser(env.DB, { email });
       const passwordOk = user ? await verifyPasswordKey(body.passwordKey, user.password_hash) : false;
-      if (!user || !passwordOk) {
+      // A disabled user gets the same answer as a wrong password: no hint that the account exists.
+      if (!user || !passwordOk || user.disabled === 1) {
         await recordFailure(env.DB, keys);
         await audit(env.DB, email, "login.failed", { reason: "password" });
         throw new HttpError(401, GENERIC_LOGIN_ERROR);
@@ -79,7 +83,7 @@ const routes: Route[] = [
       const token = await createSession(env, request, user.id);
       await clearAccount(env.DB, email);
       await audit(env.DB, user.email, "login.success", { ip: clientIp(request) });
-      return json({ ok: true }, { headers: { "set-cookie": sessionCookie(token, SESSION_TTL_MS / 1000) } });
+      return json({ ok: true, mustChangePassword: user.must_change_password === 1 }, { headers: { "set-cookie": sessionCookie(token, SESSION_TTL_MS / 1000) } });
     },
   },
   {
@@ -107,6 +111,27 @@ const routes: Route[] = [
         auditStatement(env.DB, session.email, "logout.all"),
       ]);
       return json({ ok: true }, { headers: { "set-cookie": clearedSessionCookie() } });
+    },
+  },
+  {
+    // Every user changes their own password here; required after an admin set or reset it.
+    method: "POST",
+    path: "/api/auth/password",
+    handler: async ({ request, env }) => {
+      const session = await requireSession(request, env);
+      const body = await readJson(request, (v) => passwordBody.parse(v));
+      const user = await loadUser(env.DB, { id: session.userId });
+      if (!user || !(await verifyPasswordKey(body.currentKey, user.password_hash))) {
+        await audit(env.DB, session.email, "password.change_failed");
+        throw new HttpError(401, "The current password is not correct.");
+      }
+      await env.DB.batch([
+        env.DB.prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?").bind(await hashPasswordKey(body.newKey), session.userId),
+        // Sign out every other device; this one stays signed in.
+        env.DB.prepare("DELETE FROM sessions WHERE user_id = ? AND id <> ?").bind(session.userId, session.id),
+        auditStatement(env.DB, session.email, "password.changed"),
+      ]);
+      return json({ ok: true });
     },
   },
   {

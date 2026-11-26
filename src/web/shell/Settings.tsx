@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type Me } from "../api";
 import { derivePasswordKey } from "../auth/kdf";
+import { ChangePassword } from "../auth/ChangePassword";
 import { SendingSettings } from "./SendingSettings";
 
 interface Blocked {
@@ -76,7 +77,12 @@ export function Settings({ me, onChanged, onSignedOut }: { me: Me; onChanged: ()
           </p>
         )}
 
-        <SendingSettings />
+        <SendingSettings me={me} />
+
+        <div className="space-y-2">
+          <h2 className="font-medium">Password</h2>
+          <ChangePassword email={me.email} onDone={() => {}} />
+        </div>
 
         <div className="space-y-3">
           <h2 className="font-medium">Two-factor login</h2>

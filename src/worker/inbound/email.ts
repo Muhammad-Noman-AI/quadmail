@@ -1,7 +1,7 @@
 // Email Routing handler. Must stay far under the 10 ms Workers Free CPU limit: headers only, no MIME parsing.
 // Order matters: the raw message is in R2 before anything else touches it, so no accepted mail is lost.
 import { ulid } from "../../shared/ulid";
-import { findSubjectCandidates, findThreadByMessageIds, insertInbound, isBlockedSender, rawKey } from "../storage/inbound";
+import { findSubjectCandidates, findThreadByMessageIds, insertInbound, isBlockedSender, rawKey, resolveRecipientOwner } from "../storage/inbound";
 import { extractInboundHeaders, normalizeSubject } from "./headers";
 import { pickSubjectThread, referenceLookupIds, SUBJECT_THREAD_WINDOW_MS } from "./threading";
 
@@ -41,14 +41,17 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env, ct
     const envelopeFrom = message.from.toLowerCase();
     const senders = [envelopeFrom, headers.from?.address ?? ""];
     const subjectNorm = normalizeSubject(headers.subject);
+    // Email Routing calls the handler once per envelope recipient: that address decides the mailbox.
+    const userId = await resolveRecipientOwner(env.DB, message.to);
+    if (!userId) throw new Error("no active admin to receive mail");
 
     const [blocked, referencedThread] = await Promise.all([
-      isBlockedSender(env.DB, senders),
-      findThreadByMessageIds(env.DB, referenceLookupIds(headers.inReplyTo, headers.references)),
+      isBlockedSender(env.DB, userId, senders),
+      findThreadByMessageIds(env.DB, userId, referenceLookupIds(headers.inReplyTo, headers.references)),
     ]);
     let threadId = referencedThread;
     if (!threadId) {
-      const candidates = await findSubjectCandidates(env.DB, subjectNorm, receivedAt - SUBJECT_THREAD_WINDOW_MS);
+      const candidates = await findSubjectCandidates(env.DB, userId, subjectNorm, receivedAt - SUBJECT_THREAD_WINDOW_MS);
       threadId = pickSubjectThread(subjectNorm, senders.filter(Boolean), candidates, receivedAt);
     }
     const isNew = threadId == null;
@@ -57,6 +60,7 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env, ct
       env.DB,
       {
         id,
+        userId,
         threadId: threadId ?? ulid(receivedAt),
         folder: blocked ? "spam" : "inbox",
         messageIdHdr: headers.messageId,

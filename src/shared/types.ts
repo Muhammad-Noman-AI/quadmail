@@ -112,3 +112,18 @@ export const MAX_RECIPIENTS = 20;
 /** Total attachment bytes per outgoing message. Base64 makes it ~13.4 MB, under Resend's 40 MB. */
 export const MAX_OUTGOING_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_BODY_HTML_CHARS = 512 * 1024;
+
+export type Role = "admin" | "member";
+
+/** One row of the admin's Team page. `addresses` are extra addresses, not the login email. */
+export interface TeamMember {
+  id: string;
+  email: string;
+  displayName: string | null;
+  role: Role;
+  disabled: boolean;
+  mustChangePassword: boolean;
+  totpEnabled: boolean;
+  createdAt: number;
+  addresses: Array<{ id: string; address: string }>;
+}

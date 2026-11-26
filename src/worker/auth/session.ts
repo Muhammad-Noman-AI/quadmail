@@ -1,12 +1,17 @@
 // CONTRACT, owned by Track B (Phase 4). Track A calls requireSession on every /api route it adds.
 import { parseConfig, type AppConfig } from "../../shared/env";
+import type { Role } from "../../shared/types";
 import { HttpError } from "../http";
 import { randomBytes, sha256Hex, toHex } from "./crypto";
+
+export type { Role };
 
 export interface Session {
   id: string;
   userId: string;
   email: string;
+  role: Role;
+  mustChangePassword: boolean;
 }
 
 export const SESSION_COOKIE = "__Host-qm_session";
@@ -73,16 +78,17 @@ export async function createSession(env: Env, request: Request, userId: string):
   return token;
 }
 
-/** Session for the request's cookie, or null. Does not check Origin. */
+/** Session for the request's cookie, or null (also for disabled users). Does not check Origin. */
 export async function findSession(request: Request, env: Env): Promise<Session | null> {
   const token = readCookie(request, SESSION_COOKIE);
   if (!token || !/^[0-9a-f]{64}$/.test(token)) return null;
   const row = await env.DB.prepare(
-    "SELECT s.id, s.user_id, u.email FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND s.expires_at > ?",
+    `SELECT s.id, s.user_id, u.email, u.role, u.must_change_password FROM sessions s JOIN users u ON u.id = s.user_id
+     WHERE s.id = ? AND s.expires_at > ? AND u.disabled = 0`,
   )
     .bind(await sha256Hex(token), Date.now())
-    .first<{ id: string; user_id: string; email: string }>();
-  return row ? { id: row.id, userId: row.user_id, email: row.email } : null;
+    .first<{ id: string; user_id: string; email: string; role: Role; must_change_password: number }>();
+  return row ? { id: row.id, userId: row.user_id, email: row.email, role: row.role, mustChangePassword: row.must_change_password === 1 } : null;
 }
 
 /** Returns the session for a valid cookie, or throws HttpError(401). Also enforces the Origin check on mutating requests. */
@@ -90,5 +96,12 @@ export async function requireSession(request: Request, env: Env): Promise<Sessio
   assertSameOrigin(request, env);
   const session = await findSession(request, env);
   if (!session) throw new HttpError(401, "Not signed in");
+  return session;
+}
+
+/** Like requireSession, but only for admins (team management, addresses). */
+export async function requireAdmin(request: Request, env: Env): Promise<Session> {
+  const session = await requireSession(request, env);
+  if (session.role !== "admin") throw new HttpError(403, "Only an admin can do this");
   return session;
 }

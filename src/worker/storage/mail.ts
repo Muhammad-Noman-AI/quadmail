@@ -1,4 +1,5 @@
-// Track B repository layer over D1 for reading and organising mail. Parameterised SQL only.
+// Repository layer over D1 for reading and organising mail. Parameterised SQL only.
+// Every query is scoped to one user (messages.user_id): a user never sees another user's mail.
 import type { Address, AttachmentMeta, Folder, MessageDetail, MessageSummary, SendStatus } from "../../shared/types";
 
 /** D1 allows 100 bound parameters per statement; keep id lists well under it. */
@@ -107,6 +108,7 @@ export function decodeCursor(cursor: string): { receivedAt: number; id: string }
 }
 
 export interface ListQuery {
+  userId: string;
   folder?: Folder;
   labelId?: string;
   starred?: boolean;
@@ -115,8 +117,8 @@ export interface ListQuery {
 }
 
 export async function listMessages(db: D1Database, query: ListQuery): Promise<{ items: MessageSummary[]; nextCursor: string | null }> {
-  const where = ["m.deleted_at IS NULL"];
-  const params: unknown[] = [];
+  const where = ["m.user_id = ?", "m.deleted_at IS NULL"];
+  const params: unknown[] = [query.userId];
   if (query.starred) {
     where.push("m.is_starred = 1", "m.folder NOT IN ('trash', 'spam')");
   } else if (query.labelId) {
@@ -165,28 +167,32 @@ async function attachmentsFor(db: D1Database, messageIds: string[]): Promise<Map
   return map;
 }
 
-export async function getMessage(db: D1Database, id: string): Promise<MessageDetail | null> {
-  const row = await db.prepare(`SELECT ${DETAIL_COLUMNS} FROM messages m WHERE m.id = ? AND m.deleted_at IS NULL`).bind(id).first<MessageRow>();
+export async function getMessage(db: D1Database, userId: string, id: string): Promise<MessageDetail | null> {
+  const row = await db
+    .prepare(`SELECT ${DETAIL_COLUMNS} FROM messages m WHERE m.id = ? AND m.user_id = ? AND m.deleted_at IS NULL`)
+    .bind(id, userId)
+    .first<MessageRow>();
   if (!row) return null;
   const attachments = await attachmentsFor(db, [id]);
   return toDetail(row, attachments.get(id) ?? []);
 }
 
-export async function getThread(db: D1Database, threadId: string): Promise<MessageDetail[]> {
+export async function getThread(db: D1Database, userId: string, threadId: string): Promise<MessageDetail[]> {
   const { results } = await db
-    .prepare(`SELECT ${DETAIL_COLUMNS} FROM messages m WHERE m.thread_id = ? AND m.deleted_at IS NULL ORDER BY m.received_at ASC, m.id ASC`)
-    .bind(threadId)
+    .prepare(`SELECT ${DETAIL_COLUMNS} FROM messages m WHERE m.thread_id = ? AND m.user_id = ? AND m.deleted_at IS NULL ORDER BY m.received_at ASC, m.id ASC`)
+    .bind(threadId, userId)
     .all<MessageRow>();
   const attachments = await attachmentsFor(db, results.map((row) => row.id));
   return results.map((row) => toDetail(row, attachments.get(row.id) ?? []));
 }
 
-export async function folderCounts(db: D1Database): Promise<Record<string, number>> {
+export async function folderCounts(db: D1Database, userId: string): Promise<Record<string, number>> {
   const { results } = await db
     .prepare(
-      `SELECT folder, COUNT(*) AS n FROM messages WHERE deleted_at IS NULL AND is_read = 0 AND folder IN ('inbox', 'spam') GROUP BY folder
-       UNION ALL SELECT 'drafts', COUNT(*) FROM messages WHERE deleted_at IS NULL AND folder = 'drafts'`,
+      `SELECT folder, COUNT(*) AS n FROM messages WHERE user_id = ? AND deleted_at IS NULL AND is_read = 0 AND folder IN ('inbox', 'spam') GROUP BY folder
+       UNION ALL SELECT 'drafts', COUNT(*) FROM messages WHERE user_id = ? AND deleted_at IS NULL AND folder = 'drafts'`,
     )
+    .bind(userId, userId)
     .all<{ folder: string; n: number }>();
   return Object.fromEntries(results.map((row) => [row.folder, row.n]));
 }
@@ -201,7 +207,7 @@ export interface BulkUpdate {
 }
 
 /** All changes for all ids in one D1 batch (one round trip, atomic). */
-export function bulkUpdateStatements(db: D1Database, update: BulkUpdate): D1PreparedStatement[] {
+export function bulkUpdateStatements(db: D1Database, userId: string, update: BulkUpdate): D1PreparedStatement[] {
   const statements: D1PreparedStatement[] = [];
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -221,17 +227,24 @@ export function bulkUpdateStatements(db: D1Database, update: BulkUpdate): D1Prep
     const chunk = update.ids.slice(i, i + ID_CHUNK);
     const inList = chunk.map(() => "?").join(", ");
     if (sets.length) {
-      statements.push(db.prepare(`UPDATE messages SET ${sets.join(", ")} WHERE id IN (${inList})`).bind(...values, ...chunk));
+      statements.push(db.prepare(`UPDATE messages SET ${sets.join(", ")} WHERE id IN (${inList}) AND user_id = ?`).bind(...values, ...chunk, userId));
     }
     for (const labelId of update.addLabels ?? []) {
       statements.push(
         db
-          .prepare(`INSERT OR IGNORE INTO message_labels (message_id, label_id) SELECT id, ? FROM messages WHERE id IN (${inList}) AND EXISTS (SELECT 1 FROM labels WHERE id = ?)`)
-          .bind(labelId, ...chunk, labelId),
+          .prepare(
+            `INSERT OR IGNORE INTO message_labels (message_id, label_id) SELECT id, ? FROM messages
+             WHERE id IN (${inList}) AND user_id = ? AND EXISTS (SELECT 1 FROM labels WHERE id = ? AND user_id = ?)`,
+          )
+          .bind(labelId, ...chunk, userId, labelId, userId),
       );
     }
     for (const labelId of update.removeLabels ?? []) {
-      statements.push(db.prepare(`DELETE FROM message_labels WHERE label_id = ? AND message_id IN (${inList})`).bind(labelId, ...chunk));
+      statements.push(
+        db
+          .prepare(`DELETE FROM message_labels WHERE label_id = ? AND message_id IN (SELECT id FROM messages WHERE id IN (${inList}) AND user_id = ?)`)
+          .bind(labelId, ...chunk, userId),
+      );
     }
   }
   return statements;
@@ -291,9 +304,9 @@ function likePattern(value: string): string {
   return `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
-export async function searchMessages(db: D1Database, query: SearchQuery, limit = 50): Promise<MessageSummary[]> {
-  const where = ["m.deleted_at IS NULL"];
-  const params: unknown[] = [];
+export async function searchMessages(db: D1Database, userId: string, query: SearchQuery, limit = 50): Promise<MessageSummary[]> {
+  const where = ["m.user_id = ?", "m.deleted_at IS NULL"];
+  const params: unknown[] = [userId];
   const fts = ftsExpression(query.terms);
   if (fts) {
     where.push("m.rowid IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)");

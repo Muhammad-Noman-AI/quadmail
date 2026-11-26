@@ -1,3 +1,5 @@
+import type { Role } from "../shared/types";
+
 // Thin JSON client for /api. Same-origin requests carry the session cookie and an Origin header.
 export class ApiError extends Error {
   constructor(
@@ -27,7 +29,12 @@ export async function api<T>(path: string, options: { method?: string; body?: un
 }
 
 export interface Me {
+  id: string;
   email: string;
+  displayName: string | null;
+  role: Role;
+  /** Set when an admin created the account or reset the password. */
+  mustChangePassword: boolean;
   totpEnabled: boolean;
 }
 

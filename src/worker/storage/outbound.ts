@@ -104,6 +104,7 @@ export interface DraftFields extends Omit<DraftInput, "html" | "text"> {
 
 export function insertDraft(
   db: D1Database,
+  userId: string,
   id: string,
   fields: DraftFields,
   reply: { inReplyTo: string | null; references: string[] },
@@ -111,12 +112,13 @@ export function insertDraft(
 ): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT INTO messages (id, direction, folder, in_reply_to, references_json, from_addr, from_name, to_json, cc_json, bcc_json,
+      `INSERT INTO messages (id, user_id, direction, folder, in_reply_to, references_json, from_addr, from_name, to_json, cc_json, bcc_json,
          subject, snippet, search_text, html_key, is_read, parse_status, received_at)
-       VALUES (?, 'out', 'drafts', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'done', ?)`,
+       VALUES (?, ?, 'out', 'drafts', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'done', ?)`,
     )
     .bind(
       id,
+      userId,
       reply.inReplyTo,
       reply.references.length ? JSON.stringify(reply.references) : null,
       fields.from.toLowerCase(),
@@ -133,12 +135,12 @@ export function insertDraft(
 }
 
 /** Update a draft in place. Zero changes means it is not a draft any more (sent or deleted). */
-export async function updateDraft(db: D1Database, id: string, fields: DraftFields, now: number): Promise<boolean> {
+export async function updateDraft(db: D1Database, userId: string, id: string, fields: DraftFields, now: number): Promise<boolean> {
   const result = await db
     .prepare(
       `UPDATE messages SET from_addr = ?, from_name = ?, to_json = ?, cc_json = ?, bcc_json = ?, subject = ?, snippet = ?,
          search_text = ?, received_at = ?
-       WHERE id = ? AND folder = 'drafts' AND direction = 'out' AND deleted_at IS NULL`,
+       WHERE id = ? AND user_id = ? AND folder = 'drafts' AND direction = 'out' AND deleted_at IS NULL`,
     )
     .bind(
       fields.from.toLowerCase(),
@@ -151,6 +153,7 @@ export async function updateDraft(db: D1Database, id: string, fields: DraftField
       fields.searchText,
       now,
       id,
+      userId,
     )
     .run();
   return result.meta.changes > 0;
@@ -170,13 +173,13 @@ export interface DraftRow {
   received_at: number;
 }
 
-export async function getDraft(db: D1Database, id: string): Promise<DraftRow | null> {
+export async function getDraft(db: D1Database, userId: string, id: string): Promise<DraftRow | null> {
   return db
     .prepare(
       `SELECT id, from_addr, from_name, to_json, cc_json, bcc_json, subject, in_reply_to, references_json, html_key, received_at
-       FROM messages WHERE id = ? AND folder = 'drafts' AND direction = 'out' AND deleted_at IS NULL`,
+       FROM messages WHERE id = ? AND user_id = ? AND folder = 'drafts' AND direction = 'out' AND deleted_at IS NULL`,
     )
-    .bind(id)
+    .bind(id, userId)
     .first<DraftRow>();
 }
 
@@ -206,8 +209,8 @@ export function deleteAttachmentStatements(db: D1Database, messageId: string, at
 }
 
 /** Message, its attachment rows (cascade) and FTS entry (trigger). R2 objects are deleted by the caller. */
-export function deleteDraftStatement(db: D1Database, id: string): D1PreparedStatement {
-  return db.prepare("DELETE FROM messages WHERE id = ? AND folder = 'drafts' AND direction = 'out'").bind(id);
+export function deleteDraftStatement(db: D1Database, userId: string, id: string): D1PreparedStatement {
+  return db.prepare("DELETE FROM messages WHERE id = ? AND user_id = ? AND folder = 'drafts' AND direction = 'out'").bind(id, userId);
 }
 
 // ---- Sending ----

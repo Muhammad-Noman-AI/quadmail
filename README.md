@@ -23,7 +23,7 @@ pnpm check                       # typecheck + lint + tests
 
 ## Status
 
-Phases 1–5 done: scaffold, D1 + R2, inbound pipeline, auth + read UI, sending. Next: first deploy, then Phase 6 (polish and operations).
+Phases 1–5 done and deployed: scaffold, D1 + R2, inbound pipeline, auth + read UI, sending; plus multi-user (Team). Next: Phase 6 (polish and operations).
 
 ## Sending (Resend)
 
@@ -42,6 +42,14 @@ Rules enforced on every send: From must be one of your identities on `ALLOWED_SE
 recipients; at most `DAILY_SEND_LIMIT` recipients per UTC day (each To, Cc and Bcc address counts); attachments up to
 10 MB per message. Attachments are Base64-encoded once at upload time, so the send request only streams bytes
 from R2 and stays inside the 10 ms CPU limit.
+
+## Team (multi-user)
+
+The first user (set with `pnpm owner:password`) is an admin. Admins open **Team** in the sidebar to create users
+(`name@<allowed domain>`, a temporary password the user must change at first login), reset passwords, change roles,
+disable users, and give extra addresses such as `sales@`. Every user sees only their own mail; this is enforced in
+every query on the server. Inbound mail is routed by recipient address: an address belongs to exactly one user,
+and mail to an unknown address (catch-all) or to a disabled user goes to the first active admin.
 
 ## Database
 
