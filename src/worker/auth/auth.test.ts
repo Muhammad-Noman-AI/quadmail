@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decryptString, encryptString, fromHex, timingSafeEqual, toBase64 } from "./crypto";
 import { hashPasswordKey, verifyPasswordKey } from "./password";
-import { base32Decode, base32Encode, hotp, otpauthUri, verifyTotp } from "./totp";
+import { base32Decode, base32Encode, hotp, matchTotpStep, otpauthUri, verifyTotp } from "./totp";
 
 describe("TOTP (RFC 6238 appendix B, SHA-1, 8 digits)", () => {
   // Secret is ASCII "12345678901234567890".
@@ -62,5 +62,17 @@ describe("crypto helpers", () => {
     expect(timingSafeEqual("abc", "abc")).toBe(true);
     expect(timingSafeEqual("abc", "abd")).toBe(false);
     expect(() => fromHex("zz")).toThrow();
+  });
+});
+
+describe("matchTotpStep", () => {
+  it("returns the step a code belongs to, so a used step can be refused", async () => {
+    const b32 = base32Encode(new Uint8Array(20).fill(7));
+    const now = 1_800_000_000_000;
+    const step = Math.floor(now / 30_000);
+    const code = await hotp(base32Decode(b32), step);
+    expect(await matchTotpStep(b32, code, now)).toBe(step);
+    expect(await matchTotpStep(b32, code, now + 30_000)).toBe(step);
+    expect(await matchTotpStep(b32, "000000", now)).toBe(code === "000000" ? step : null);
   });
 });

@@ -58,17 +58,24 @@ export async function hotp(secret: Uint8Array<ArrayBuffer>, counter: number, dig
   return (code % 10 ** digits).toString().padStart(digits, "0");
 }
 
-/** True if `code` matches the current step or one step either side (clock drift). */
-export async function verifyTotp(secretBase32: string, code: string, nowMs = Date.now()): Promise<boolean> {
-  if (!/^\d{6}$/.test(code)) return false;
+/**
+ * The time step `code` belongs to (current step or one either side, for clock drift), or null.
+ * Callers that log someone in must also reject a step at or below the last one used (replay).
+ */
+export async function matchTotpStep(secretBase32: string, code: string, nowMs = Date.now()): Promise<number | null> {
+  if (!/^\d{6}$/.test(code)) return null;
   const secret = base32Decode(secretBase32);
   const step = Math.floor(nowMs / 1000 / TOTP_STEP_SECONDS);
-  let match = false;
+  let matched: number | null = null;
   for (const delta of [-1, 0, 1]) {
     // Evaluate all three so timing does not reveal which window matched.
-    if ((await hotp(secret, step + delta)) === code) match = true;
+    if ((await hotp(secret, step + delta)) === code) matched = step + delta;
   }
-  return match;
+  return matched;
+}
+
+export async function verifyTotp(secretBase32: string, code: string, nowMs = Date.now()): Promise<boolean> {
+  return (await matchTotpStep(secretBase32, code, nowMs)) !== null;
 }
 
 export function otpauthUri(secretBase32: string, account: string, issuer = "QuadMail"): string {

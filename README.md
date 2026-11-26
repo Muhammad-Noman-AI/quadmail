@@ -7,7 +7,7 @@ Self-owned email for `quadgentics.com`, running entirely on Cloudflare's free ti
 - **Parsing:** done in the browser with `postal-mime`, so the Worker stays inside the 10 ms free CPU limit.
 - **Sending:** Resend API, behind a swappable provider interface.
 
-See [docs/PLAN.md](docs/PLAN.md) for verified limits and phases, and `docs/SETUP.md` (Phase 7) for the human checklist.
+See [docs/PLAN.md](docs/PLAN.md) for verified limits and phases, [docs/SETUP.md](docs/SETUP.md) to set up an installation from scratch, and [docs/SECURITY.md](docs/SECURITY.md) for the threat model.
 
 ## Development
 
@@ -23,7 +23,7 @@ pnpm check                       # typecheck + lint + tests
 
 ## Status
 
-Phases 1–5 done and deployed: scaffold, D1 + R2, inbound pipeline, auth + read UI, sending; plus multi-user (Team) and Phase 6 (usage page, retention, PWA, shortcuts, themes, mobile menu, backups). Next: Phase 7 (hardening, tests, final docs).
+Phases 1–5 done and deployed: scaffold, D1 + R2, inbound pipeline, auth + read UI, sending; plus multi-user (Team) and Phase 6 (usage page, retention, PWA, shortcuts, themes, mobile menu, backups). Phase 7 done: security review, TOTP replay protection, API end-to-end suites (`pnpm e2e`), setup and security docs. Next: self-setup (Deploy button + setup wizard) for other organisations.
 
 ## Sending (Resend)
 

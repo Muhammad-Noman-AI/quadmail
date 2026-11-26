@@ -16,6 +16,7 @@
     "smoke:local": "bash scripts/smoke.sh --local",
     "smoke:remote": "bash scripts/smoke.sh --remote",
     "owner:password": "node scripts/set-owner-password.ts",
+    "e2e": "node test/e2e/run.mjs",
     "backup:remote": "node scripts/backup.ts --remote",
     "backup:local": "node scripts/backup.ts --local",
     "icons": "node scripts/make-icons.ts",

@@ -133,3 +133,16 @@ describe("deliveryUpdate", () => {
     expect(affectedRecipients({ ...event, data: { ...event.data, bounce: { type: "Permanent", message: "rejected" } } })).toEqual([]);
   });
 });
+
+describe("signInEmail", () => {
+  it("contains the details and escapes names in the HTML", async () => {
+    const { signInEmail } = await import("./system");
+    const mail = signInEmail({ name: "<b>Ubaid</b>", email: "ubaid@quadgentics.com", tempPassword: "abcDEF23456789", appUrl: "https://quadmail.example.workers.dev", adminName: "Noman", reset: false });
+    expect(mail.subject).toBe("Your new email account: ubaid@quadgentics.com");
+    expect(mail.text).toContain("Temporary password: abcDEF23456789");
+    expect(mail.text).toContain("Sign in at: https://quadmail.example.workers.dev");
+    expect(mail.html).toContain("&lt;b&gt;Ubaid&lt;/b&gt;");
+    expect(mail.html).not.toContain("<b>Ubaid</b>");
+    expect(signInEmail({ name: null, email: "a@x.com", tempPassword: "x", appUrl: "https://a", adminName: "N", reset: true }).subject).toContain("new temporary password");
+  });
+});

@@ -68,6 +68,8 @@ export interface ParsedMessage {
   /** Plain text for full-text search, at most SEARCH_TEXT_MAX_BYTES of UTF-8. */
   searchText: string;
   attachments: Array<AttachmentMeta & { content: ArrayBuffer }>;
+  /** Raw threading headers as postal-mime returns them; the Worker re-parses them. */
+  threading?: { messageId: string | null; inReplyTo: string | null; references: string | null };
 }
 
 export const SEARCH_TEXT_MAX_BYTES = 8 * 1024;
@@ -125,6 +127,8 @@ export interface TeamMember {
   mustChangePassword: boolean;
   totpEnabled: boolean;
   createdAt: number;
+  /** Personal address for sign-in details (new account, password reset). */
+  recoveryEmail: string | null;
   addresses: Array<{ id: string; address: string }>;
 }
 

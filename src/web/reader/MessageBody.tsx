@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { MessageDetail, ParsedMessage } from "../../shared/types";
 import { formatBytes } from "../format";
 import { loadContent } from "../mail/content";
@@ -9,6 +9,54 @@ const SENDER_KEY = "qm:remote-ok:";
 
 function senderAllowsRemote(address: string | undefined): boolean {
   return !!address && localStorage.getItem(SENDER_KEY + address.toLowerCase()) === "1";
+}
+
+/**
+ * The sanitised email in a sandboxed frame, as tall as its content.
+ * Sandbox: never allow-scripts, so nothing in the email can run. allow-same-origin is only there so this
+ * page can read the content height (without scripts the frame cannot use that origin for anything).
+ * allow-popups lets links open in a new tab; the frame's own CSP blocks remote loads until allowed.
+ */
+function EmailFrame({ title, doc }: { title: string; doc: string }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(160);
+
+  useEffect(() => {
+    const element = frame.current;
+    if (!element) return;
+    let observer: ResizeObserver | null = null;
+    const measure = () => {
+      const root = element.contentDocument?.documentElement;
+      if (root) setHeight(Math.max(120, Math.ceil(root.scrollHeight)));
+    };
+    const onLoad = () => {
+      measure();
+      observer?.disconnect();
+      const body = element.contentDocument?.body;
+      if (body) {
+        // Images and fonts change the height after load.
+        observer = new ResizeObserver(measure);
+        observer.observe(body);
+      }
+    };
+    element.addEventListener("load", onLoad);
+    return () => {
+      element.removeEventListener("load", onLoad);
+      observer?.disconnect();
+    };
+  }, [doc]);
+
+  return (
+    <iframe
+      ref={frame}
+      title={title}
+      sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+      referrerPolicy="no-referrer"
+      srcDoc={doc}
+      style={{ height }}
+      className="w-full rounded-lg border-0 bg-white dark:bg-neutral-900"
+    />
+  );
 }
 
 export function MessageBody({ message }: { message: MessageDetail }) {
@@ -86,15 +134,7 @@ export function MessageBody({ message }: { message: MessageDetail }) {
           This message failed sender authentication (SPF/DKIM/DMARC). Be careful with links and attachments.
         </p>
       )}
-      {/* No allow-scripts and no allow-same-origin: the email runs in an opaque origin without JavaScript.
-          allow-popups lets links open in a new tab; the frame's own CSP blocks remote loads. */}
-      <iframe
-        title={`Message from ${message.from?.address ?? "unknown sender"}`}
-        sandbox="allow-popups allow-popups-to-escape-sandbox"
-        referrerPolicy="no-referrer"
-        srcDoc={rendered.doc}
-        className="h-[70vh] w-full rounded-lg border-0 bg-white dark:bg-neutral-900"
-      />
+      <EmailFrame title={`Message from ${message.from?.address ?? "unknown sender"}`} doc={rendered.doc} />
       {files.length > 0 && (
         <ul className="flex flex-wrap gap-2 px-2">
           {files.map((file) => (

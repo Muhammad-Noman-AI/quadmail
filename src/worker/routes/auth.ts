@@ -15,7 +15,7 @@ import {
   SESSION_TTL_MS,
   sessionCookie,
 } from "../auth/session";
-import { generateTotpSecret, otpauthUri, verifyTotp } from "../auth/totp";
+import { generateTotpSecret, matchTotpStep, otpauthUri } from "../auth/totp";
 import { HttpError, json } from "../http";
 import type { Route } from "../router";
 
@@ -36,6 +36,20 @@ interface UserRow {
   must_change_password: number;
 }
 
+/**
+ * Accept a TOTP code at most once (RFC 6238 section 5.2): its time step must be newer than the last
+ * accepted one. The conditional UPDATE makes two simultaneous logins with the same code race safely.
+ */
+async function acceptTotp(db: D1Database, userId: string, secret: string, code: string): Promise<boolean> {
+  const step = await matchTotpStep(secret, code);
+  if (step === null) return false;
+  const result = await db
+    .prepare("UPDATE users SET totp_last_step = ? WHERE id = ? AND (totp_last_step IS NULL OR totp_last_step < ?)")
+    .bind(step, userId, step)
+    .run();
+  return result.meta.changes > 0;
+}
+
 async function loadUser(db: D1Database, by: { email?: string; id?: string }): Promise<UserRow | null> {
   const [column, value] = by.id ? ["id", by.id] : ["email", by.email ?? ""];
   return db.prepare(`SELECT id, email, password_hash, totp_secret_enc, disabled, must_change_password FROM users WHERE ${column} = ?`).bind(value).first<UserRow>();
@@ -49,6 +63,9 @@ function totpKey(env: Env): string {
 
 const GENERIC_LOGIN_ERROR = "Incorrect email, password or code";
 
+/** Verified when the email is unknown, so a missing account takes as long as a wrong password. */
+const DUMMY_HASH = "v1$00000000000000000000000000000000$" + "0".repeat(64);
+
 const routes: Route[] = [
   {
     method: "POST",
@@ -61,7 +78,7 @@ const routes: Route[] = [
       if (await isLimited(env.DB, keys)) throw new HttpError(429, "Too many attempts. Try again in 15 minutes.");
 
       const user = await loadUser(env.DB, { email });
-      const passwordOk = user ? await verifyPasswordKey(body.passwordKey, user.password_hash) : false;
+      const passwordOk = await verifyPasswordKey(body.passwordKey, user?.password_hash ?? DUMMY_HASH);
       // A disabled user gets the same answer as a wrong password: no hint that the account exists.
       if (!user || !passwordOk || user.disabled === 1) {
         await recordFailure(env.DB, keys);
@@ -73,7 +90,7 @@ const routes: Route[] = [
         // Password is right; ask for the second factor without counting a failure.
         if (!body.totp) return json({ totpRequired: true }, { status: 401 });
         const secret = await decryptString(user.totp_secret_enc, totpKey(env));
-        if (!(await verifyTotp(secret, body.totp))) {
+        if (!(await acceptTotp(env.DB, user.id, secret, body.totp))) {
           await recordFailure(env.DB, keys);
           await audit(env.DB, email, "login.failed", { reason: "totp" });
           throw new HttpError(401, GENERIC_LOGIN_ERROR);
@@ -120,8 +137,12 @@ const routes: Route[] = [
     handler: async ({ request, env }) => {
       const session = await requireSession(request, env);
       const body = await readJson(request, (v) => passwordBody.parse(v));
+      // Same throttle as login, so a stolen session cannot guess the current password.
+      const keys = attemptKeys(clientIp(request), session.email);
+      if (await isLimited(env.DB, keys)) throw new HttpError(429, "Too many attempts. Try again in 15 minutes.");
       const user = await loadUser(env.DB, { id: session.userId });
       if (!user || !(await verifyPasswordKey(body.currentKey, user.password_hash))) {
+        await recordFailure(env.DB, keys);
         await audit(env.DB, session.email, "password.change_failed");
         throw new HttpError(401, "The current password is not correct.");
       }
@@ -151,10 +172,12 @@ const routes: Route[] = [
     handler: async ({ request, env }) => {
       const session = await requireSession(request, env);
       const body = await readJson(request, (v) => enableBody.parse(v));
-      if (!(await verifyTotp(body.secret, body.code))) throw new HttpError(400, "That code is not valid. Check your phone's clock and try again.");
+      const step = await matchTotpStep(body.secret, body.code);
+      if (step === null) throw new HttpError(400, "That code is not valid. Check your phone's clock and try again.");
       const sealed = await encryptString(body.secret, totpKey(env));
       await env.DB.batch([
-        env.DB.prepare("UPDATE users SET totp_secret_enc = ? WHERE id = ?").bind(sealed, session.userId),
+        // The code used to turn 2FA on cannot be reused to log in.
+        env.DB.prepare("UPDATE users SET totp_secret_enc = ?, totp_last_step = ? WHERE id = ?").bind(sealed, step, session.userId),
         auditStatement(env.DB, session.email, "totp.enabled"),
       ]);
       return json({ ok: true });
@@ -169,13 +192,13 @@ const routes: Route[] = [
       const user = await loadUser(env.DB, { id: session.userId });
       if (!user?.totp_secret_enc) throw new HttpError(400, "Two-factor login is not enabled");
       const secret = await decryptString(user.totp_secret_enc, totpKey(env));
-      const ok = (await verifyPasswordKey(body.passwordKey, user.password_hash)) && (await verifyTotp(secret, body.code));
+      const ok = (await verifyPasswordKey(body.passwordKey, user.password_hash)) && (await acceptTotp(env.DB, user.id, secret, body.code));
       if (!ok) {
         await audit(env.DB, session.email, "totp.disable_failed");
         throw new HttpError(401, GENERIC_LOGIN_ERROR);
       }
       await env.DB.batch([
-        env.DB.prepare("UPDATE users SET totp_secret_enc = NULL WHERE id = ?").bind(session.userId),
+        env.DB.prepare("UPDATE users SET totp_secret_enc = NULL, totp_last_step = NULL WHERE id = ?").bind(session.userId),
         auditStatement(env.DB, session.email, "totp.disabled"),
       ]);
       return json({ ok: true });

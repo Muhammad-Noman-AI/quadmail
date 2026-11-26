@@ -3,7 +3,7 @@ import { z } from "zod";
 import { SEARCH_TEXT_MAX_BYTES, SNIPPET_MAX_CHARS } from "../../shared/types";
 import { requireSession, type Session } from "../auth/session";
 import { HttpError, json } from "../http";
-import { normalizeSubject } from "../inbound/headers";
+import { normalizeSubject, parseMessageIds } from "../inbound/headers";
 import { capChars, capUtf8 } from "../../shared/text";
 import type { Route, RouteContext } from "../router";
 import {
@@ -14,6 +14,7 @@ import {
   markPending,
   pendingIds,
   saveParsed,
+  threadUnthreaded,
   upsertAttachment,
   type MessageRef,
 } from "../storage/inbound";
@@ -31,6 +32,9 @@ export const parsedBodySchema = z.object({
   subject: z.string().max(4000).nullable(),
   snippet: z.string().max(10_000),
   searchText: z.string().max(200_000),
+  messageId: z.string().max(2000).nullable().optional(),
+  inReplyTo: z.string().max(2000).nullable().optional(),
+  references: z.string().max(20_000).nullable().optional(),
   attachments: z
     .array(
       z.object({
@@ -124,6 +128,15 @@ export const inboundRoutes: Route[] = [
         },
         normalizeSubject(body.subject),
       );
+      if (!ref.threadId) {
+        // Mail rebuilt by the reconcile job had no headers; thread it now that the browser has them.
+        await threadUnthreaded(context.env.DB, session.userId, ref.id, {
+          messageId: parseMessageIds(body.messageId)[0] ?? null,
+          inReplyTo: parseMessageIds(body.inReplyTo)[0] ?? null,
+          references: parseMessageIds(body.references),
+          subjectNorm: normalizeSubject(body.subject),
+        });
+      }
       return json({ ok: true });
     },
   },

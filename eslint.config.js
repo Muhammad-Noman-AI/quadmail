@@ -4,7 +4,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", ".wrangler", "mailflare", "src/worker/worker-configuration.d.ts"] },
+  { ignores: ["dist", ".wrangler", "mailflare", "backups", "src/worker/worker-configuration.d.ts"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -12,5 +12,9 @@ export default tseslint.config(
     languageOptions: { globals: globals.browser },
     plugins: { "react-hooks": reactHooks },
     rules: reactHooks.configs.recommended.rules,
+  },
+  {
+    files: ["scripts/**/*.{ts,mjs}", "test/**/*.mjs"],
+    languageOptions: { globals: globals.node },
   },
 );

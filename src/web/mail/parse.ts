@@ -61,6 +61,7 @@ export async function parseRawDetailed(raw: ArrayBuffer): Promise<ParseOutcome> 
         snippet: makeSnippet(bodyText),
         searchText: makeSearchText(`${bodyText} ${names}`),
         attachments,
+        threading: { messageId: email.messageId ?? null, inReplyTo: email.inReplyTo ?? null, references: email.references ?? null },
       },
       error: null,
     };
@@ -132,6 +133,10 @@ export async function indexMessage(id: string): Promise<ParsedMessage> {
       subject: parsed.subject,
       snippet: parsed.snippet,
       searchText: parsed.searchText,
+      // Lets the Worker thread mail that the reconcile job stored without headers.
+      messageId: parsed.threading?.messageId ?? null,
+      inReplyTo: parsed.threading?.inReplyTo ?? null,
+      references: parsed.threading?.references ?? null,
       attachments: parsed.attachments.map(({ content, ...meta }) => {
         void content;
         return meta;

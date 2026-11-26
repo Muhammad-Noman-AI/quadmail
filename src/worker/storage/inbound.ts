@@ -1,6 +1,7 @@
 // D1/R2 access for the inbound pipeline (Track A). UI-facing queries live in storage/mail.ts.
 import type { Address, AttachmentMeta } from "../../shared/types";
-import type { SubjectCandidate } from "../inbound/threading";
+import { ulid, ulidTime } from "../../shared/ulid";
+import { referenceLookupIds, type SubjectCandidate } from "../inbound/threading";
 
 export function rawKey(id: string, receivedAt: number): string {
   const d = new Date(receivedAt);
@@ -224,6 +225,29 @@ export async function saveParsed(db: D1Database, ref: MessageRef, fields: Parsed
     statements.push(db.prepare(`UPDATE threads SET subject_norm = ? WHERE id = ? AND subject_norm = ''`).bind(subjectNorm, ref.threadId));
   }
   await db.batch(statements);
+}
+
+/** Give a message without a thread one: by its references, else a new thread. Fills missing headers. */
+export async function threadUnthreaded(
+  db: D1Database,
+  userId: string,
+  messageId: string,
+  headers: { messageId: string | null; inReplyTo: string | null; references: string[]; subjectNorm: string },
+): Promise<void> {
+  const existing = await findThreadByMessageIds(db, userId, referenceLookupIds(headers.inReplyTo, headers.references));
+  const threadId = existing ?? ulid();
+  const at = ulidTime(messageId);
+  await db.batch([
+    existing
+      ? db.prepare("UPDATE threads SET last_message_at = MAX(last_message_at, ?), message_count = message_count + 1 WHERE id = ?").bind(at, threadId)
+      : db.prepare("INSERT INTO threads (id, subject_norm, last_message_at, message_count) VALUES (?, ?, ?, 1)").bind(threadId, headers.subjectNorm, at),
+    db
+      .prepare(
+        `UPDATE messages SET thread_id = ?, message_id_hdr = COALESCE(message_id_hdr, ?), in_reply_to = COALESCE(in_reply_to, ?),
+           references_json = COALESCE(references_json, ?) WHERE id = ? AND user_id = ? AND thread_id IS NULL`,
+      )
+      .bind(threadId, headers.messageId, headers.inReplyTo, headers.references.length ? JSON.stringify(headers.references) : null, messageId, userId),
+  ]);
 }
 
 export async function markParseFailed(db: D1Database, id: string, error: string): Promise<void> {

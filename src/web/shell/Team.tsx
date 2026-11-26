@@ -41,11 +41,23 @@ function MemberRow({ member, me, domain, onChanged, onMessage }: { member: TeamM
 
   async function resetPassword() {
     if (!window.confirm(`Reset the password of ${member.email}? They are signed out everywhere and must choose a new password at the next login.`)) return;
+    const sendTo = member.recoveryEmail && window.confirm(`Email the new temporary password to ${member.recoveryEmail}?`) ? member.recoveryEmail : null;
     const temp = generatePassword();
     await run(async () => {
-      await api(`/api/team/${member.id}`, { method: "PATCH", body: { passwordKey: await derivePasswordKey(member.email, temp) } });
-      return `New temporary password for ${member.email}: ${temp} — give it to them privately. It is shown only once.`;
+      const result = await api<{ emailed: { sent: boolean; error?: string } }>(`/api/team/${member.id}`, {
+        method: "PATCH",
+        body: { passwordKey: await derivePasswordKey(member.email, temp), ...(sendTo ? { tempPassword: temp } : {}) },
+      });
+      if (sendTo && result.emailed.sent) return `New temporary password sent to ${sendTo}. (It is also: ${temp})`;
+      const failed = sendTo ? ` The email to ${sendTo} failed: ${result.emailed.error ?? "unknown error"}.` : "";
+      return `New temporary password for ${member.email}: ${temp} — give it to them privately. It is shown only once.${failed}`;
     });
+  }
+
+  async function editRecovery() {
+    const value = window.prompt(`Personal email of ${member.email} (for sign-in details). Leave empty to remove.`, member.recoveryEmail ?? "");
+    if (value === null) return;
+    await patch({ recoveryEmail: value.trim() || null }, value.trim() ? `Personal email saved: ${value.trim()}` : "Personal email removed.");
   }
 
   async function addAlias(event: FormEvent) {
@@ -68,6 +80,10 @@ function MemberRow({ member, me, domain, onChanged, onMessage }: { member: TeamM
             {self && <span className="ml-2 text-xs text-neutral-500">(you)</span>}
           </div>
           <div className="text-sm text-neutral-600 dark:text-neutral-400">{member.email}</div>
+          <div className="text-xs text-neutral-500">
+            Personal email: {member.recoveryEmail ?? <span className="text-neutral-400">not set</span>}{" "}
+            <button className={link} onClick={editRecovery} disabled={busy}>{member.recoveryEmail ? "Edit" : "Add"}</button>
+          </div>
           <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
             <span className={`rounded px-1.5 ${member.role === "admin" ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200" : "bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"}`}>{member.role}</span>
             {member.disabled ? (
@@ -137,6 +153,8 @@ export function Team({ me }: { me: Me }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState<Role>("member");
   const [password, setPassword] = useState(generatePassword);
+  const [personal, setPersonal] = useState("");
+  const [sendDetails, setSendDetails] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -151,13 +169,32 @@ export function Team({ me }: { me: Me }) {
     setMessage(null);
     const email = `${local.trim().toLowerCase()}@${domain}`;
     if (password.length < MIN_PASSWORD_LENGTH) return setMessage({ ok: false, text: `The temporary password needs at least ${MIN_PASSWORD_LENGTH} characters.` });
+    const recovery = personal.trim().toLowerCase();
+    if (recovery && recovery === email) return setMessage({ ok: false, text: "The personal email must be a different address (for example their Gmail)." });
+    const emailIt = !!recovery && sendDetails;
     setBusy(true);
     try {
-      await api("/api/team", { body: { email, displayName: name.trim() || null, role, passwordKey: await derivePasswordKey(email, password) } });
-      setMessage({ ok: true, text: `Created ${email}. Give them the app address and this temporary password privately: ${password} — they choose their own at the first login.` });
+      const result = await api<{ invite: { sent: boolean; error?: string } }>("/api/team", {
+        body: {
+          email,
+          displayName: name.trim() || null,
+          role,
+          passwordKey: await derivePasswordKey(email, password),
+          recoveryEmail: recovery || null,
+          ...(emailIt ? { tempPassword: password } : {}),
+        },
+      });
+      if (emailIt && result.invite.sent) {
+        setMessage({ ok: true, text: `Created ${email}. The sign-in details were emailed to ${recovery}. (Temporary password, in case they need it: ${password})` });
+      } else {
+        const failed = emailIt ? ` The email to ${recovery} could not be sent: ${result.invite.error ?? "unknown error"}.` : "";
+        setMessage({ ok: !failed, text: `Created ${email}. Give them the app address and this temporary password privately: ${password} — they choose their own at the first login.${failed}` });
+      }
       setLocal("");
       setName("");
       setRole("member");
+      setPersonal("");
+      setSendDetails(true);
       setPassword(generatePassword());
       void load();
     } catch (err) {
@@ -200,6 +237,21 @@ export function Team({ me }: { me: Me }) {
             <input className={`${input} w-56 font-mono`} required minLength={MIN_PASSWORD_LENGTH} value={password} onChange={(e) => setPassword(e.target.value)} aria-label="Temporary password" />
             <button type="button" className={link} onClick={() => setPassword(generatePassword())}>Generate new</button>
             <span className="text-xs text-neutral-500">Temporary password: they must change it at the first login.</span>
+          </div>
+          <div className="space-y-2 rounded-lg bg-neutral-50 p-3 dark:bg-neutral-900">
+            <div className="text-sm font-medium">Send sign-in details <span className="font-normal text-neutral-500">(optional)</span></div>
+            <p className="text-xs text-neutral-500">
+              Their personal email, like a Gmail address. We email them their new address, the temporary password and the sign-in link. Leave it empty to skip and give the details yourself.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <input className={`${input} w-72`} type="email" placeholder="ubaid.personal@gmail.com" value={personal} onChange={(e) => setPersonal(e.target.value)} aria-label="Personal email" />
+              {personal.trim() && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={sendDetails} onChange={(e) => setSendDetails(e.target.checked)} />
+                  Email the sign-in details now
+                </label>
+              )}
+            </div>
           </div>
           <button disabled={busy || !domain} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60">
             {busy ? "Creating…" : "Create user"}
