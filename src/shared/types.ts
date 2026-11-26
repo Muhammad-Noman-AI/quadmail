@@ -147,3 +147,38 @@ export interface Usage {
   providerMonthlyLimit: number;
   retentionDays: number;
 }
+
+// ---- Self-setup wizard ----
+
+export interface DnsCheck {
+  status: "ok" | "warn" | "fail";
+  message: string;
+}
+
+export interface DnsReport {
+  spf: DnsCheck;
+  dmarc: DnsCheck;
+  mx: DnsCheck;
+}
+
+export interface SetupDomain {
+  id: string;
+  name: string;
+  /** Resend status: not_started, pending, verified, partially_verified, partially_failed, failed, temporary_failure. */
+  status: string;
+  records: Array<{ record: string; name: string; type: string; value: string; priority?: number; status: string }>;
+}
+
+export interface SetupStatus {
+  state: "fresh" | "in_progress" | "complete";
+  /** False when the installation has no SETUP_CODE secret, so nobody can claim it. */
+  codeConfigured: boolean;
+  orgName: string | null;
+  domain: string | null;
+  resendConnected: boolean;
+  /** The full-access key from step 3 is still held (it expires after 2 hours). */
+  setupKeyHeld: boolean;
+  sendingReady: boolean;
+  inboundTestAddress: string | null;
+  inboundVerified: boolean;
+}

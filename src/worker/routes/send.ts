@@ -176,7 +176,7 @@ async function send({ request, env, ctx, params }: RouteContext): Promise<Respon
 
   if (cfg.provider !== "resend") throw new HttpError(501, "Cloudflare Email Sending needs the Workers Paid plan. Set MAIL_PROVIDER to resend.");
   if (!cfg.resendApiKey) throw new HttpError(503, "Sending is not set up yet: connect Resend first.");
-  const provider = new ResendProvider(cfg.resendApiKey);
+  const provider = new ResendProvider(cfg.resendApiKey, undefined, cfg.resendApiBase);
 
   const references = parseStringList(draft.references_json);
   const subject = draft.subject ?? "";

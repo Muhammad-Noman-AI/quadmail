@@ -19,6 +19,8 @@ export const envSchema = z.object({
   /** Chosen in the Deploy form; unlocks the setup wizard of a fresh installation. */
   SETUP_CODE: z.string().min(8).max(200).optional(),
   RESEND_API_KEY: z.string().startsWith("re_").optional(),
+  /** Testing only: send Resend API calls to a local mock instead of https://api.resend.com. */
+  RESEND_API_BASE: z.url().optional(),
   RESEND_WEBHOOK_SECRET: z.string().startsWith("whsec_").optional(),
   /** 32 random bytes, base64. Encrypts TOTP secrets at rest. Required before enabling 2FA. */
   TOTP_ENC_KEY: z

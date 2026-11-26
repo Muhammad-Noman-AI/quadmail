@@ -22,7 +22,16 @@ describe("resolveConfig", () => {
       provider: "resend",
       resendApiKey: "re_stored",
       webhookSecret: "whsec_stored",
+      resendApiBase: "https://api.resend.com",
+      setupState: "complete",
     });
+  });
+
+  it("derives the setup state", () => {
+    expect(resolveConfig(parseConfig({}), {}, false).setupState).toBe("fresh");
+    expect(resolveConfig(parseConfig({}), { setup_state: "in_progress" }, true).setupState).toBe("in_progress");
+    // Installations set up by hand have users but no stored state: complete, no wizard.
+    expect(resolveConfig(parseConfig({}), {}, true).setupState).toBe("complete");
   });
 
   it("lets Worker vars and secrets win, field by field (existing installations keep working)", () => {

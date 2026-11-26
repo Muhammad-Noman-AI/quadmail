@@ -64,7 +64,7 @@ export async function sendSystemEmail(
   const day = utcDay(Date.now());
   if (!(await reserveQuota(db, day, 1, cfg.dailyLimit))) throw new HttpError(429, "Today's send limit is reached. Give the details to the user yourself.");
   try {
-    await new ResendProvider(cfg.resendApiKey).send({
+    await new ResendProvider(cfg.resendApiKey, undefined, cfg.resendApiBase).send({
       idempotencyKey: ulid(),
       from: formatMailbox(from.address, from.name),
       to: [to],

@@ -21,6 +21,10 @@ export interface ResolvedConfig {
   provider: "resend" | "cloudflare";
   resendApiKey: string | null;
   webhookSecret: string | null;
+  /** https://api.resend.com unless RESEND_API_BASE points at a test mock. */
+  resendApiBase: string;
+  /** Setup wizard progress: "fresh" (no users yet), "in_progress", or "complete". */
+  setupState: "fresh" | "in_progress" | "complete";
 }
 
 /** Plain values stored in app_config (secrets already decrypted). */
@@ -31,9 +35,17 @@ export interface StoredConfig {
   daily_limit?: string;
   resend_api_key?: string;
   resend_webhook_secret?: string;
+  /** "in_progress" while the wizard runs, "complete" after; absent on installations set up by hand. */
+  setup_state?: string;
+  resend_domain_id?: string;
+  /** Full-access key, kept only between wizard steps 3 and 5, then deleted. */
+  resend_setup_key?: string;
+  resend_setup_key_at?: string;
+  inbound_test_address?: string;
+  inbound_verified?: string;
 }
 
-const SECRET_KEYS = new Set<keyof StoredConfig>(["resend_api_key", "resend_webhook_secret"]);
+const SECRET_KEYS = new Set<keyof StoredConfig>(["resend_api_key", "resend_webhook_secret", "resend_setup_key"]);
 
 function domains(csv: string | undefined): string[] {
   return (csv ?? "")
@@ -42,8 +54,8 @@ function domains(csv: string | undefined): string[] {
     .filter(Boolean);
 }
 
-/** Env wins over stored values, field by field. Pure, for tests. */
-export function resolveConfig(env: AppConfig, stored: StoredConfig): ResolvedConfig {
+/** Env wins over stored values, field by field. `hasUsers` decides "fresh". Pure, for tests. */
+export function resolveConfig(env: AppConfig, stored: StoredConfig, hasUsers = true): ResolvedConfig {
   const storedLimit = Number(stored.daily_limit);
   return {
     appUrl: env.APP_URL ?? stored.app_url ?? null,
@@ -53,6 +65,8 @@ export function resolveConfig(env: AppConfig, stored: StoredConfig): ResolvedCon
     provider: env.MAIL_PROVIDER,
     resendApiKey: env.RESEND_API_KEY ?? stored.resend_api_key ?? null,
     webhookSecret: env.RESEND_WEBHOOK_SECRET ?? stored.resend_webhook_secret ?? null,
+    resendApiBase: (env.RESEND_API_BASE ?? "https://api.resend.com").replace(/\/+$/, ""),
+    setupState: stored.setup_state === "in_progress" ? "in_progress" : !hasUsers ? "fresh" : "complete",
   };
 }
 
@@ -85,6 +99,15 @@ export function clearConfigCache(): void {
 
 async function readStored(env: Env): Promise<StoredConfig> {
   const { results } = await env.DB.prepare("SELECT key, value FROM app_config").all<{ key: keyof StoredConfig; value: string }>();
+  return decryptStored(env, results);
+}
+
+/** Every stored setting, secrets decrypted (for the setup wizard, which also needs its own keys). */
+export async function storedConfig(env: Env): Promise<StoredConfig> {
+  return readStored(env);
+}
+
+async function decryptStored(env: Env, results: Array<{ key: keyof StoredConfig; value: string }>): Promise<StoredConfig> {
   const stored: StoredConfig = {};
   const secrets = results.filter((r) => SECRET_KEYS.has(r.key));
   const key = secrets.length ? await masterKey(env.MAIL, false) : null;
@@ -101,7 +124,8 @@ async function readStored(env: Env): Promise<StoredConfig> {
 
 export async function appConfig(env: Env): Promise<ResolvedConfig> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.value;
-  const value = resolveConfig(parseConfig(env as unknown as Record<string, unknown>), await readStored(env));
+  const [stored, user] = await Promise.all([readStored(env), env.DB.prepare("SELECT 1 AS one FROM users LIMIT 1").first()]);
+  const value = resolveConfig(parseConfig(env as unknown as Record<string, unknown>), stored, user !== null);
   cache = { at: Date.now(), value };
   return value;
 }

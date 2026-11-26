@@ -4,7 +4,6 @@
 import type { MailProvider, OutboundMessage } from "./provider";
 import { ProviderError } from "./provider";
 
-const ENDPOINT = "https://api.resend.com/emails";
 const encoder = new TextEncoder();
 
 export type BodyPart = Uint8Array | { stream: ReadableStream<Uint8Array>; bytes: number };
@@ -71,6 +70,8 @@ export class ResendProvider implements MailProvider {
   constructor(
     private readonly apiKey: string,
     private readonly fetcher: typeof fetch = (input, init) => fetch(input, init),
+    /** https://api.resend.com, or a local mock in tests. */
+    private readonly base = "https://api.resend.com",
   ) {}
 
   async send(message: OutboundMessage): Promise<{ providerMessageId: string }> {
@@ -88,12 +89,13 @@ export class ResendProvider implements MailProvider {
 
     let response: Response;
     try {
-      response = await this.fetcher(ENDPOINT, {
+      response = await this.fetcher(`${this.base}/emails`, {
         method: "POST",
         headers: {
           authorization: `Bearer ${this.apiKey}`,
           "content-type": "application/json",
           "idempotency-key": message.idempotencyKey,
+          "user-agent": "QuadMail",
         },
         body,
       });
