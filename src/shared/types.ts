@@ -105,7 +105,7 @@ export interface SendingInfo {
   maxRecipients: number;
   maxAttachmentBytes: number;
   allowedDomains: string[];
-  /** False until RESEND_API_KEY is configured. */
+  /** False until a Resend key is configured (Worker secret or setup wizard). */
   providerReady: boolean;
 }
 

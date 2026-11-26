@@ -6,7 +6,8 @@ import type { Role, TeamMember } from "../../shared/types";
 import { ulid } from "../../shared/ulid";
 import { hashPasswordKey } from "../auth/password";
 import { auditStatement, readJson, secured } from "../auth/respond";
-import { config, requireAdmin, type Session } from "../auth/session";
+import { requireAdmin, type Session } from "../auth/session";
+import { appConfig } from "../config";
 import { HttpError, json } from "../http";
 import type { Route } from "../router";
 import { domainOf } from "../send/rules";
@@ -44,8 +45,9 @@ function param(value: string | undefined): string {
   return parsed.data;
 }
 
-function allowedAddress(env: Env, address: string): string {
-  const domains = config(env).ALLOWED_SENDING_DOMAINS;
+async function allowedAddress(env: Env, address: string): Promise<string> {
+  const domains = (await appConfig(env)).allowedDomains;
+  if (!domains.length) throw new HttpError(400, "Finish the setup first: no email domain is configured.");
   const lower = address.trim().toLowerCase();
   if (!domains.includes(domainOf(lower))) throw new HttpError(400, `Only addresses on ${domains.join(", ")} can be used.`);
   return lower;
@@ -84,16 +86,18 @@ async function listTeam(db: D1Database): Promise<TeamMember[]> {
 }
 
 /** Email sign-in details to a user's personal address, from the admin's default address. */
-async function emailSignIn(env: Env, admin: Session, to: string, details: { name: string | null; email: string; tempPassword: string; reset: boolean }): Promise<void> {
+async function emailSignIn(env: Env, admin: Session, origin: string, to: string, details: { name: string | null; email: string; tempPassword: string; reset: boolean }): Promise<void> {
   const from = await env.DB.prepare(
     `SELECT i.address, COALESCE(i.display_name, u.display_name) AS name FROM identities i JOIN users u ON u.id = i.user_id
      WHERE i.user_id = ? ORDER BY i.is_default DESC LIMIT 1`,
   )
     .bind(admin.userId)
     .first<{ address: string; name: string | null }>();
-  const cfg = config(env);
+  const cfg = await appConfig(env);
   const sender = from ?? { address: admin.email, name: null };
-  await sendSystemEmail(env.DB, cfg, sender, to, signInEmail({ ...details, appUrl: cfg.APP_URL, adminName: sender.name || sender.address }));
+  // The app's address: configured, else the address the admin is using right now.
+  const appUrl = cfg.appUrl ?? origin;
+  await sendSystemEmail(env.DB, cfg, sender, to, signInEmail({ ...details, appUrl, adminName: sender.name || sender.address }));
   await auditStatement(env.DB, admin.email, details.reset ? "user.reset_sent" : "user.invite_sent", { email: details.email }).run();
 }
 
@@ -117,7 +121,7 @@ const routes: Route[] = [
     handler: async ({ request, env }) => {
       const session = await requireAdmin(request, env);
       const body = await readJson(request, (v) => createBody.parse(v));
-      const email = allowedAddress(env, body.email);
+      const email = await allowedAddress(env, body.email);
       const owner = await addressOwner(env.DB, email);
       if (owner) throw new HttpError(409, owner === email ? "A user with this email already exists." : `${email} is already an address of ${owner}.`);
       const recovery = body.recoveryEmail?.trim().toLowerCase() || null;
@@ -136,7 +140,7 @@ const routes: Route[] = [
       let invite: { sent: boolean; error?: string } = { sent: false };
       if (body.tempPassword && recovery) {
         try {
-          await emailSignIn(env, session, recovery, { name: body.displayName || null, email, tempPassword: body.tempPassword, reset: false });
+          await emailSignIn(env, session, new URL(request.url).origin, recovery, { name: body.displayName || null, email, tempPassword: body.tempPassword, reset: false });
           invite = { sent: true };
         } catch (err) {
           invite = { sent: false, error: err instanceof HttpError ? err.message : "Could not send the email" };
@@ -187,7 +191,7 @@ const routes: Route[] = [
       let emailed: { sent: boolean; error?: string } = { sent: false };
       if (body.tempPassword && recovery) {
         try {
-          await emailSignIn(env, session, recovery, { name: user.display_name, email: user.email, tempPassword: body.tempPassword, reset: true });
+          await emailSignIn(env, session, new URL(request.url).origin, recovery, { name: user.display_name, email: user.email, tempPassword: body.tempPassword, reset: true });
           emailed = { sent: true };
         } catch (err) {
           emailed = { sent: false, error: err instanceof HttpError ? err.message : "Could not send the email" };
@@ -203,7 +207,7 @@ const routes: Route[] = [
       const session = await requireAdmin(request, env);
       const userId = param(params.id);
       const body = await readJson(request, (v) => addressBody.parse(v));
-      const address = allowedAddress(env, body.address);
+      const address = await allowedAddress(env, body.address);
       const exists = await env.DB.prepare("SELECT 1 AS ok FROM users WHERE id = ?").bind(userId).first();
       if (!exists) throw new HttpError(404, "User not found");
       const owner = await addressOwner(env.DB, address);

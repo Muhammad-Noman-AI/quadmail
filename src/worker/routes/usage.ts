@@ -2,7 +2,8 @@
 // listing R2 would cost Class A operations, so storage is estimated from the sizes D1 records.
 import type { Usage } from "../../shared/types";
 import { secured } from "../auth/respond";
-import { config, requireAdmin } from "../auth/session";
+import { requireAdmin } from "../auth/session";
+import { appConfig } from "../config";
 import { json } from "../http";
 import type { Route } from "../router";
 import { utcDay } from "../send/rules";
@@ -43,7 +44,7 @@ const routes: Route[] = [
         messages: s.messages,
         perUser: (perUser!.results as Array<{ email: string; messages: number }>).map((r) => ({ email: r.email, messages: r.messages })),
         sentToday: t.today,
-        dailyLimit: config(env).DAILY_SEND_LIMIT,
+        dailyLimit: (await appConfig(env)).dailyLimit,
         providerDailyLimit: 100,
         sentThisMonth: t.month,
         providerMonthlyLimit: 3000,

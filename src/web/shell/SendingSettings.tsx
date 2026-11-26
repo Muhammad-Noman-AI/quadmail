@@ -99,7 +99,7 @@ export function SendingSettings({ me }: { me: Me }) {
         <h2 className="font-medium">Sending</h2>
         {info && (
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            {info.providerReady ? "Resend is connected." : "Resend is not connected yet (RESEND_API_KEY secret missing)."} Sent today: {info.sentToday} of {info.dailyLimit}.
+            {info.providerReady ? "Resend is connected." : "Resend is not connected yet."} Sent today: {info.sentToday} of {info.dailyLimit}.
           </p>
         )}
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{error}</p>}

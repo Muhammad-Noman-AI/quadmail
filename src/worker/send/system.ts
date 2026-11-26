@@ -2,7 +2,7 @@
 // provider and counted against the same daily limit, but never stored: the body holds a password.
 import { stripControlChars } from "../../shared/text";
 import { ulid } from "../../shared/ulid";
-import type { AppConfig } from "../../shared/env";
+import type { ResolvedConfig } from "../config";
 import { HttpError } from "../http";
 import { releaseQuota, reserveQuota } from "../storage/outbound";
 import { ProviderError } from "./provider";
@@ -55,16 +55,16 @@ export function signInEmail(details: SignInDetails): { subject: string; text: st
 /** Send one system email from `from`. Throws HttpError with a message fit for the admin. */
 export async function sendSystemEmail(
   db: D1Database,
-  cfg: AppConfig,
+  cfg: ResolvedConfig,
   from: { address: string; name: string | null },
   to: string,
   message: { subject: string; text: string; html: string },
 ): Promise<void> {
-  if (cfg.MAIL_PROVIDER !== "resend" || !cfg.RESEND_API_KEY) throw new HttpError(503, "Sending is not set up (RESEND_API_KEY missing).");
+  if (cfg.provider !== "resend" || !cfg.resendApiKey) throw new HttpError(503, "Sending is not set up yet: connect Resend first.");
   const day = utcDay(Date.now());
-  if (!(await reserveQuota(db, day, 1, cfg.DAILY_SEND_LIMIT))) throw new HttpError(429, "Today's send limit is reached. Give the details to the user yourself.");
+  if (!(await reserveQuota(db, day, 1, cfg.dailyLimit))) throw new HttpError(429, "Today's send limit is reached. Give the details to the user yourself.");
   try {
-    await new ResendProvider(cfg.RESEND_API_KEY).send({
+    await new ResendProvider(cfg.resendApiKey).send({
       idempotencyKey: ulid(),
       from: formatMailbox(from.address, from.name),
       to: [to],

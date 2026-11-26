@@ -1,5 +1,5 @@
 // CONTRACT, owned by Track B (Phase 4). Track A calls requireSession on every /api route it adds.
-import { parseConfig, type AppConfig } from "../../shared/env";
+import { parseConfig } from "../../shared/env";
 import type { Role } from "../../shared/types";
 import { HttpError } from "../http";
 import { randomBytes, sha256Hex, toHex } from "./crypto";
@@ -18,9 +18,6 @@ export const SESSION_COOKIE = "__Host-qm_session";
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-export function config(env: Env): AppConfig {
-  return parseConfig(env as unknown as Record<string, unknown>);
-}
 
 export function readCookie(request: Request, name: string): string | null {
   const header = request.headers.get("cookie");
@@ -53,7 +50,8 @@ export function clearedSessionCookie(): string {
 export function assertSameOrigin(request: Request, env: Env): void {
   if (!MUTATING.has(request.method)) return;
   const origin = request.headers.get("origin");
-  const allowed = new Set([new URL(config(env).APP_URL).origin, new URL(request.url).origin]);
+  const appUrl = parseConfig(env as unknown as Record<string, unknown>).APP_URL;
+  const allowed = new Set([new URL(request.url).origin, ...(appUrl ? [new URL(appUrl).origin] : [])]);
   if (!origin || !allowed.has(origin)) throw new HttpError(403, "Cross-origin request rejected");
 }
 

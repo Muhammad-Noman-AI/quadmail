@@ -10,6 +10,16 @@ const valid = {
 };
 
 describe("parseConfig", () => {
+  it("accepts a fresh installation with no domain settings (the setup wizard stores them in D1)", () => {
+    const config = parseConfig({});
+    expect(config.MAIL_PROVIDER).toBe("resend");
+    expect(config.ALLOWED_SENDING_DOMAINS).toBeUndefined();
+  });
+
+  it("rejects a setup code that is too short to guess-proof", () => {
+    expect(() => parseConfig({ SETUP_CODE: "short" })).toThrow(/SETUP_CODE/);
+  });
+
   it("parses and normalises valid config", () => {
     const config = parseConfig(valid);
     expect(config.ALLOWED_SENDING_DOMAINS).toEqual(["quadgentics.com", "example.org"]);

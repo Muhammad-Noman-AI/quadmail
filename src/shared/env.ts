@@ -5,13 +5,19 @@ const csvList = z
   .transform((value) => value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))
   .pipe(z.array(z.string().min(1)).min(1));
 
-/** Worker configuration (vars + secrets). Parsed once per request so a bad deploy fails loudly. */
+/**
+ * Worker vars and secrets. Since the self-setup wizard, most settings may instead live in D1
+ * (src/worker/config.ts); a value set here always takes precedence, so existing installations keep working.
+ */
 export const envSchema = z.object({
-  APP_URL: z.url(),
-  OWNER_EMAIL: z.email(),
-  ALLOWED_SENDING_DOMAINS: csvList,
-  DAILY_SEND_LIMIT: z.coerce.number().int().positive().max(100),
-  MAIL_PROVIDER: z.enum(["resend", "cloudflare"]),
+  APP_URL: z.url().optional(),
+  /** Used by scripts/set-owner-password.ts only. */
+  OWNER_EMAIL: z.email().optional(),
+  ALLOWED_SENDING_DOMAINS: csvList.optional(),
+  DAILY_SEND_LIMIT: z.coerce.number().int().positive().max(100).optional(),
+  MAIL_PROVIDER: z.enum(["resend", "cloudflare"]).default("resend"),
+  /** Chosen in the Deploy form; unlocks the setup wizard of a fresh installation. */
+  SETUP_CODE: z.string().min(8).max(200).optional(),
   RESEND_API_KEY: z.string().startsWith("re_").optional(),
   RESEND_WEBHOOK_SECRET: z.string().startsWith("whsec_").optional(),
   /** 32 random bytes, base64. Encrypts TOTP secrets at rest. Required before enabling 2FA. */

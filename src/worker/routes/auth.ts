@@ -8,7 +8,6 @@ import {
   assertSameOrigin,
   clearedSessionCookie,
   clientIp,
-  config,
   createSession,
   findSession,
   requireSession,
@@ -16,6 +15,7 @@ import {
   sessionCookie,
 } from "../auth/session";
 import { generateTotpSecret, matchTotpStep, otpauthUri } from "../auth/totp";
+import { totpEncryptionKey } from "../config";
 import { HttpError, json } from "../http";
 import type { Route } from "../router";
 
@@ -55,11 +55,6 @@ async function loadUser(db: D1Database, by: { email?: string; id?: string }): Pr
   return db.prepare(`SELECT id, email, password_hash, totp_secret_enc, disabled, must_change_password FROM users WHERE ${column} = ?`).bind(value).first<UserRow>();
 }
 
-function totpKey(env: Env): string {
-  const key = config(env).TOTP_ENC_KEY;
-  if (!key) throw new HttpError(500, "TOTP_ENC_KEY is not configured");
-  return key;
-}
 
 const GENERIC_LOGIN_ERROR = "Incorrect email, password or code";
 
@@ -89,7 +84,7 @@ const routes: Route[] = [
       if (user.totp_secret_enc) {
         // Password is right; ask for the second factor without counting a failure.
         if (!body.totp) return json({ totpRequired: true }, { status: 401 });
-        const secret = await decryptString(user.totp_secret_enc, totpKey(env));
+        const secret = await decryptString(user.totp_secret_enc, await totpEncryptionKey(env));
         if (!(await acceptTotp(env.DB, user.id, secret, body.totp))) {
           await recordFailure(env.DB, keys);
           await audit(env.DB, email, "login.failed", { reason: "totp" });
@@ -160,7 +155,7 @@ const routes: Route[] = [
     path: "/api/auth/totp/setup",
     handler: async ({ request, env }) => {
       const session = await requireSession(request, env);
-      totpKey(env); // fail early if 2FA cannot be stored
+      await totpEncryptionKey(env); // fail early if 2FA cannot be stored
       const secret = generateTotpSecret();
       // Nothing is stored yet: the client sends the secret back with a valid code to enable it.
       return json({ secret, uri: otpauthUri(secret, session.email) });
@@ -174,7 +169,7 @@ const routes: Route[] = [
       const body = await readJson(request, (v) => enableBody.parse(v));
       const step = await matchTotpStep(body.secret, body.code);
       if (step === null) throw new HttpError(400, "That code is not valid. Check your phone's clock and try again.");
-      const sealed = await encryptString(body.secret, totpKey(env));
+      const sealed = await encryptString(body.secret, await totpEncryptionKey(env));
       await env.DB.batch([
         // The code used to turn 2FA on cannot be reused to log in.
         env.DB.prepare("UPDATE users SET totp_secret_enc = ?, totp_last_step = ? WHERE id = ?").bind(sealed, step, session.userId),
@@ -191,7 +186,7 @@ const routes: Route[] = [
       const body = await readJson(request, (v) => disableBody.parse(v));
       const user = await loadUser(env.DB, { id: session.userId });
       if (!user?.totp_secret_enc) throw new HttpError(400, "Two-factor login is not enabled");
-      const secret = await decryptString(user.totp_secret_enc, totpKey(env));
+      const secret = await decryptString(user.totp_secret_enc, await totpEncryptionKey(env));
       const ok = (await verifyPasswordKey(body.passwordKey, user.password_hash)) && (await acceptTotp(env.DB, user.id, secret, body.code));
       if (!ok) {
         await audit(env.DB, session.email, "totp.disable_failed");

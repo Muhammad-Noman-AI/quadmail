@@ -264,7 +264,7 @@ export function Composer({
 
       {info && !info.providerReady && (
         <p className="bg-amber-50 px-4 py-1.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          Sending is not set up yet (the RESEND_API_KEY secret is missing). You can still write and save drafts.
+          Sending is not set up yet (Resend is not connected). You can still write and save drafts.
         </p>
       )}
       {error && (

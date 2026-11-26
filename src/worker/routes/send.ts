@@ -15,7 +15,8 @@ import {
 } from "../../shared/types";
 import { ulid } from "../../shared/ulid";
 import { audit, auditStatement, readJson, secured } from "../auth/respond";
-import { config, requireSession, type Session } from "../auth/session";
+import { requireSession, type Session } from "../auth/session";
+import { appConfig } from "../config";
 import { HttpError, json } from "../http";
 import { normalizeSubject } from "../inbound/headers";
 import { referenceLookupIds } from "../inbound/threading";
@@ -155,7 +156,7 @@ async function loadOutgoing(env: Env, draft: DraftRow): Promise<{ body: StoredBo
 
 async function send({ request, env, ctx, params }: RouteContext): Promise<Response> {
   const session = await requireSession(request, env);
-  const cfg = config(env);
+  const cfg = await appConfig(env);
   const draft = await requireDraft(env, session, param(params.id));
   const identities = await identitiesWithDefault(env, session);
   const to = parseAddresses(draft.to_json);
@@ -163,7 +164,7 @@ async function send({ request, env, ctx, params }: RouteContext): Promise<Respon
   const bcc = parseAddresses(draft.bcc_json);
   let rules;
   try {
-    rules = checkSend({ from: draft.from_addr ?? "", identities: identities.map((i) => i.address), allowedDomains: cfg.ALLOWED_SENDING_DOMAINS, to, cc, bcc });
+    rules = checkSend({ from: draft.from_addr ?? "", identities: identities.map((i) => i.address), allowedDomains: cfg.allowedDomains, to, cc, bcc });
   } catch (err) {
     if (err instanceof SendRuleError) throw new HttpError(400, err.message);
     throw err;
@@ -173,9 +174,9 @@ async function send({ request, env, ctx, params }: RouteContext): Promise<Respon
     throw new HttpError(400, `Not sent: ${blocked.join(", ")} bounced or complained before. Remove them, or clear them in Settings → Suppressed addresses.`);
   }
 
-  if (cfg.MAIL_PROVIDER !== "resend") throw new HttpError(501, "Cloudflare Email Sending needs the Workers Paid plan. Set MAIL_PROVIDER to resend.");
-  if (!cfg.RESEND_API_KEY) throw new HttpError(503, "Sending is not set up yet: the RESEND_API_KEY secret is missing.");
-  const provider = new ResendProvider(cfg.RESEND_API_KEY);
+  if (cfg.provider !== "resend") throw new HttpError(501, "Cloudflare Email Sending needs the Workers Paid plan. Set MAIL_PROVIDER to resend.");
+  if (!cfg.resendApiKey) throw new HttpError(503, "Sending is not set up yet: connect Resend first.");
+  const provider = new ResendProvider(cfg.resendApiKey);
 
   const references = parseStringList(draft.references_json);
   const subject = draft.subject ?? "";
@@ -188,11 +189,11 @@ async function send({ request, env, ctx, params }: RouteContext): Promise<Respon
   if (!(await claimDraft(env.DB, draft.id, draft.received_at, now))) {
     throw new HttpError(409, "The draft changed or is already being sent. Try again.");
   }
-  if (!(await reserveQuota(env.DB, day, rules.recipients.length, cfg.DAILY_SEND_LIMIT))) {
+  if (!(await reserveQuota(env.DB, day, rules.recipients.length, cfg.dailyLimit))) {
     // Keep received_at: a retry of the same draft then reuses the same idempotency key.
     await env.DB.batch([unclaimStatement(env.DB, draft.id, draft.received_at), auditStatement(env.DB, session.email, "send.limit", { id: draft.id })]);
     const used = await sentOn(env.DB, day);
-    throw new HttpError(429, `Daily send limit reached (${used} of ${cfg.DAILY_SEND_LIMIT} used, each recipient counts). Sending resumes at midnight UTC.`);
+    throw new HttpError(429, `Daily send limit reached (${used} of ${cfg.dailyLimit} used, each recipient counts). Sending resumes at midnight UTC.`);
   }
 
   const identity = identities.find((i) => i.address.toLowerCase() === rules.from)!;
@@ -239,15 +240,15 @@ const routes: Route[] = [
     path: "/api/sending",
     handler: async ({ request, env }) => {
       const session = await requireSession(request, env);
-      const cfg = config(env);
+      const cfg = await appConfig(env);
       const info: SendingInfo = {
         identities: await identitiesWithDefault(env, session),
         sentToday: await sentOn(env.DB, utcDay(Date.now())),
-        dailyLimit: cfg.DAILY_SEND_LIMIT,
+        dailyLimit: cfg.dailyLimit,
         maxRecipients: MAX_RECIPIENTS,
         maxAttachmentBytes: MAX_OUTGOING_ATTACHMENT_BYTES,
-        allowedDomains: cfg.ALLOWED_SENDING_DOMAINS,
-        providerReady: cfg.MAIL_PROVIDER === "resend" && !!cfg.RESEND_API_KEY,
+        allowedDomains: cfg.allowedDomains,
+        providerReady: cfg.provider === "resend" && !!cfg.resendApiKey,
       };
       return json(info);
     },
@@ -404,7 +405,7 @@ const routes: Route[] = [
     method: "POST",
     path: "/api/webhooks/resend",
     handler: async ({ request, env }) => {
-      const secret = config(env).RESEND_WEBHOOK_SECRET;
+      const secret = (await appConfig(env)).webhookSecret;
       if (!secret) throw new HttpError(503, "Webhook secret is not configured");
       if (Number(request.headers.get("content-length") ?? 0) > MAX_WEBHOOK_BYTES) throw new HttpError(413, "Payload too large");
       const raw = await request.text();
