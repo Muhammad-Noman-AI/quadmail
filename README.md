@@ -14,7 +14,7 @@ See [docs/PLAN.md](docs/PLAN.md) for verified limits and phases, [docs/SETUP.md]
 QuadMail runs on **your own** Cloudflare account (free plan) with a free Resend account for sending. You need a
 domain on Cloudflare and a GitHub account.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Noman37375/quadmail)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Muhammad-Noman-AI/quadmail)
 
 1. Click **Deploy to Cloudflare** above. Cloudflare copies the code
    to your GitHub, creates the Worker, D1 and R2, runs the migrations and deploys. Choose a **setup code** in the form.
