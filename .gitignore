@@ -10,3 +10,4 @@ mailflare/
 
 # Agent worktrees
 .claude/
+backups/
