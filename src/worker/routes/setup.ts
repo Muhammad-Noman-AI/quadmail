@@ -29,7 +29,7 @@ const adminBody = z.object({
   passwordKey: z.string().regex(/^[0-9a-f]{64}$/),
 });
 const resendBody = z.object({ apiKey: z.string().trim().startsWith("re_").max(200) });
-const sendingBody = z.object({ replaceWebhooks: z.boolean().optional() });
+const sendingBody = z.object({ replaceWebhooks: z.boolean().optional(), keepWebhooks: z.boolean().optional() });
 const testBody = z.object({ to: z.email().max(254) });
 
 function setupCode(env: Env): string | null {
@@ -97,7 +97,8 @@ const routes: Route[] = [
         domain: cfg.allowedDomains[0] ?? null,
         resendConnected: !!stored.resend_domain_id,
         setupKeyHeld: !!stored.resend_setup_key && Number.isFinite(at) && Date.now() - at <= SETUP_KEY_TTL_MS,
-        sendingReady: !!cfg.resendApiKey && !!cfg.webhookSecret,
+        // The webhook is optional (the user may keep another tool's): a sending key is what counts.
+        sendingReady: !!cfg.resendApiKey,
         inboundTestAddress: stored.inbound_test_address ?? null,
         inboundVerified: stored.inbound_verified === "1",
       };
@@ -225,6 +226,13 @@ const routes: Route[] = [
         if (domain.status !== "verified") throw new HttpError(400, "Resend has not verified the domain yet. Add the DNS records and press Check first.");
         const hooks = await admin.listWebhooks();
         const others = hooks.filter((h) => h.endpoint !== endpoint);
+        if (others.length && body.keepWebhooks) {
+          // Their other tool keeps Resend's only free webhook: send without delivery tracking.
+          const sendingKey = await admin.createSendingKey(`QuadMail ${domain.name}`, domainId);
+          await saveConfig(env, { resend_api_key: sendingKey, resend_webhook_secret: null, resend_setup_key: null, resend_setup_key_at: null });
+          await audit(env.DB, session.email, "setup.sending_ready", { domain: domain.name, webhook: "kept_existing" });
+          return json({ ok: true, webhook: false });
+        }
         if (others.length && !body.replaceWebhooks) {
           // Resend Free allows one webhook endpoint: the user decides whether to replace theirs.
           return json({ needsConfirmation: true, existing: others.map((h) => h.endpoint) }, { status: 409 });

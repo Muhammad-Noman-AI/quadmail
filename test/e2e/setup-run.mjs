@@ -120,11 +120,16 @@ try {
 
   x = await admin.call("POST", "/api/setup/sending", {});
   check("an existing webhook needs confirmation", x.status === 409 && x.data.needsConfirmation && x.data.existing[0] === "https://old-tool.example/hook");
+  x = await admin.call("POST", "/api/setup/sending", { keepWebhooks: true });
+  check("keep the existing webhook: sending ready without tracking", x.status === 200 && x.data.webhook === false && mock.state.webhooks.length === 1 && mock.state.webhooks[0].id === "w-old");
+  check("status counts sending as ready without a webhook", (await admin.call("GET", "/api/setup/status")).data.sendingReady === true);
+  // Back to the full path for the rest of the test: reconnect and replace.
+  await admin.call("POST", "/api/setup/resend", { apiKey: "re_full" });
   x = await admin.call("POST", "/api/setup/sending", { replaceWebhooks: true });
   check("sending ready after confirmation", x.status === 200, JSON.stringify(x.data));
   const hook = mock.state.webhooks[0];
   check("webhook replaced and points at this installation", mock.state.webhooks.length === 1 && hook.endpoint === `${BASE}/api/webhooks/resend`);
-  const created = mock.state.createdKeys[0];
+  const created = mock.state.createdKeys.at(-1);
   check("a sending-only key for the domain was created", created?.permission === "sending_access" && created?.domain_id === [...mock.state.domains.keys()][0]);
   check("the full-access key is forgotten", (await admin.call("GET", "/api/setup/domain")).status === 410);
   x = await admin.call("GET", "/api/sending");

@@ -338,10 +338,10 @@ function Configure({ status, reload }: { status: SetupStatus; reload: () => Prom
   }
 
   if (step === 4) {
-    const finish = (replaceWebhooks: boolean) =>
+    const finish = (replaceWebhooks: boolean, keepWebhooks = false) =>
       run(async () => {
         try {
-          await api("/api/setup/sending", { body: { replaceWebhooks } });
+          await api("/api/setup/sending", { body: { replaceWebhooks, keepWebhooks } });
           setReplace(null);
           await reload();
         } catch (err) {
@@ -362,9 +362,13 @@ function Configure({ status, reload }: { status: SetupStatus; reload: () => Prom
             <p>
               Your Resend account already has a webhook, and the free plan allows only one: <code className="break-all">{replace.join(", ")}</code>
             </p>
-            <p>Replace it with QuadMail's? The other tool stops receiving delivery events from Resend.</p>
-            <div className="flex gap-2">
+            <p>
+              <b>Replace it</b> if nothing else needs it: QuadMail then tracks deliveries and bounces. <b>Keep it</b> if another tool (or another QuadMail) uses it: sending
+              still works, but QuadMail will not see deliveries or bounces.
+            </p>
+            <div className="flex flex-wrap gap-2">
               <button disabled={busy} className={primary} onClick={() => finish(true)}>Replace it</button>
+              <button disabled={busy} className={secondary} onClick={() => finish(false, true)}>Keep it (no delivery tracking)</button>
               <button disabled={busy} className={secondary} onClick={() => setReplace(null)}>Cancel</button>
             </div>
           </div>

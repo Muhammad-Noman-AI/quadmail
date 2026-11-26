@@ -178,6 +178,7 @@ export interface SetupStatus {
   resendConnected: boolean;
   /** The full-access key from step 3 is still held (it expires after 2 hours). */
   setupKeyHeld: boolean;
+  /** A sending key exists (the delivery webhook is optional). */
   sendingReady: boolean;
   inboundTestAddress: string | null;
   inboundVerified: boolean;
