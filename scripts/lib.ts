@@ -6,6 +6,10 @@ import { join } from "node:path";
 
 export const ROOT = join(import.meta.dirname, "..");
 
+/** `--env <name>` from the command line (e.g. `--env quadgentics`), passed on to every wrangler call. */
+const envIndex = process.argv.indexOf("--env");
+export const ENV_ARGS: string[] = envIndex > 0 && process.argv[envIndex + 1] && /^[a-z0-9-]+$/.test(process.argv[envIndex + 1]!) ? ["--env", process.argv[envIndex + 1]!] : [];
+
 /** Read a value from the "vars" block of wrangler.jsonc (simple regex: the file is ours). */
 export function wranglerVar(name: string): string {
   const text = readFileSync(join(ROOT, "wrangler.jsonc"), "utf8");
@@ -23,13 +27,13 @@ export function sql(value: string | number | null): string {
 export function wrangler(args: string[]): void {
   // One command string through the shell so Windows finds pnpm.cmd. Every argument is built by these
   // scripts (fixed names and quoted temp paths), never user input.
-  const result = spawnSync(["pnpm", "-s", "wrangler", ...args].join(" "), { cwd: ROOT, stdio: ["ignore", "ignore", "pipe"], shell: true, encoding: "utf8" });
+  const result = spawnSync(["pnpm", "-s", "wrangler", ...args, ...ENV_ARGS].join(" "), { cwd: ROOT, stdio: ["ignore", "ignore", "pipe"], shell: true, encoding: "utf8" });
   if (result.status !== 0) throw new Error(`wrangler ${args[0]} ${args[1] ?? ""} failed:\n${result.stderr}`);
 }
 
 /** Run wrangler and return stdout (for `--json` output). Same quoting rule as wrangler(). */
 export function wranglerOutput(args: string[]): string {
-  const result = spawnSync(["pnpm", "-s", "wrangler", ...args].join(" "), {
+  const result = spawnSync(["pnpm", "-s", "wrangler", ...args, ...ENV_ARGS].join(" "), {
     cwd: ROOT,
     stdio: ["ignore", "pipe", "pipe"],
     shell: true,
@@ -47,7 +51,7 @@ export function executeSql(statements: string[], target: "--local" | "--remote")
   const file = join(dir, "run.sql");
   try {
     writeFileSync(file, statements.join("\n"), { mode: 0o600 });
-    wrangler(["d1", "execute", "quadmail", target, "--file", `"${file}"`]);
+    wrangler(["d1", "execute", "DB", target, "--file", `"${file}"`]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

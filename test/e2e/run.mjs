@@ -24,7 +24,7 @@ for (const [name, suite] of [
 
 console.log("\n== cleanup");
 await runCron();
-await new Promise((r) => setTimeout(r, 1500));
+await new Promise((r) => setTimeout(r, 8000));
 for (const cleanup of cleanups) await cleanup();
 // The suites log in many times from one IP; clear the counters so manual use is not throttled.
 await sql("DELETE FROM login_attempts");

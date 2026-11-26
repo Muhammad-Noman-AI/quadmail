@@ -1,6 +1,9 @@
 # Setting up QuadMail
 
-This guide sets up QuadMail for one domain from nothing. It takes about an hour. Everything runs on free plans:
+**Most people should use the Deploy to Cloudflare button and the setup wizard (see the README).** This guide is the
+manual way, with the command line, as used for the Quadgentics installation (`env.quadgentics` in `wrangler.jsonc`).
+
+It sets up QuadMail for one domain from nothing. It takes about an hour. Everything runs on free plans:
 Cloudflare (Workers, D1, R2, Email Routing) and Resend (sending).
 
 Steps marked **[you]** need a browser and your accounts. The others are commands in this folder.
@@ -25,9 +28,11 @@ pnpm exec wrangler d1 create quadmail
 pnpm exec wrangler r2 bucket create quadmail-mail
 ```
 
-Copy the `database_id` that `d1 create` prints into `wrangler.jsonc` (`d1_databases[0].database_id`).
+Add an environment for your installation to `wrangler.jsonc` (copy `env.quadgentics`), put the `database_id` that
+`d1 create` prints and your bucket name in it, and add `.env.<name>` with `CLOUDFLARE_ENV=<name>`. Use
+`--env <name>` / `--mode <name>` in the commands below (shown for `quadgentics`).
 
-In `wrangler.jsonc`, under `vars`, set:
+In that environment's `vars`, set:
 
 | Variable | Value |
 | --- | --- |
@@ -39,7 +44,7 @@ In `wrangler.jsonc`, under `vars`, set:
 Then create the tables:
 
 ```bash
-pnpm db:migrate:remote
+pnpm db:migrate:quadgentics
 ```
 
 ## 3. Resend (sending) [you]
@@ -57,18 +62,18 @@ In Cloudflare, open **DNS → Records** for `example.com`:
 ## 5. Deploy and set the secrets
 
 ```bash
-pnpm run deploy
+pnpm deploy:quadgentics
 ```
 
-The command prints the app address, for example `https://quadmail.<your-subdomain>.workers.dev`. Put that address in `APP_URL` in `wrangler.jsonc`, then deploy again.
+The command prints the app address, for example `https://quadmail.<your-subdomain>.workers.dev`. Put that address in `APP_URL` in your environment in `wrangler.jsonc`, then deploy again.
 
 Set three secrets. Type only the name on the command line. Paste the value when wrangler asks `Enter a secret value`. Never put a value on the command line.
 
 ```bash
 # 32 random bytes; the command pipes the value straight in, so it never appears on screen
-node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))" | pnpm exec wrangler secret put TOTP_ENC_KEY
-pnpm exec wrangler secret put RESEND_API_KEY          # the key from step 3
-pnpm exec wrangler secret put RESEND_WEBHOOK_SECRET   # see step 6
+node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))" | pnpm exec wrangler secret put TOTP_ENC_KEY --env quadgentics
+pnpm exec wrangler secret put RESEND_API_KEY --env quadgentics          # the key from step 3
+pnpm exec wrangler secret put RESEND_WEBHOOK_SECRET --env quadgentics   # see step 6
 ```
 
 ## 6. Resend webhook [you]
@@ -83,7 +88,7 @@ Copy its signing secret (it starts with `whsec_`) into `RESEND_WEBHOOK_SECRET`, 
 ## 7. Create the first admin
 
 ```bash
-pnpm owner:password --remote
+pnpm owner:password --remote --env quadgentics
 ```
 
 The command asks for the password of `OWNER_EMAIL` twice; you do not see what you type. Use a long, unique password. If an admin is ever locked out, run this command again: it also makes that account an active admin.
@@ -117,8 +122,7 @@ To check:
 git pull
 pnpm install
 pnpm check
-pnpm db:migrate:remote   # only when migrations/ has new files
-pnpm run deploy
+pnpm deploy:quadgentics   # runs new migrations, then builds and deploys
 ```
 
 Before a migration, save a restore point:
@@ -130,13 +134,17 @@ pnpm exec wrangler d1 time-travel info quadmail
 ## Local development
 
 ```bash
-cp .dev.vars.example .dev.vars   # set TOTP_ENC_KEY; leave RESEND_API_KEY empty so nothing is really sent
-pnpm db:migrate:local
-pnpm owner:password              # local admin
-pnpm seed:local                  # optional sample mail
-pnpm dev                         # http://localhost:5173
+# Fresh installation with the wizard (setup code from .dev.vars):
+echo "SETUP_CODE=local-setup-code" > .dev.vars
+pnpm db:migrate:local && pnpm dev
+# Or with the Quadgentics settings and local data:
+pnpm db:migrate:quadgentics:local
+pnpm owner:password --env quadgentics   # local admin
+pnpm seed:local -- --env quadgentics    # optional sample mail
+pnpm dev:quadgentics             # http://localhost:5173
 pnpm check                       # typecheck, lint, unit tests
-QM_ADMIN_PASSWORD_FILE=/path/to/password-file pnpm e2e   # API end-to-end suites, with pnpm dev running
+QM_ADMIN_PASSWORD_FILE=/path/to/password-file pnpm e2e   # API end-to-end suites, with pnpm dev:quadgentics running
+pnpm build && pnpm e2e:setup     # fresh installation + setup wizard, with a mock Resend
 ```
 
 To deliver a test mail locally:

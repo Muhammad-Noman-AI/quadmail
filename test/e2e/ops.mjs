@@ -15,12 +15,17 @@ export async function opsSuite() {
   check("moving to Trash records the time", moved?.folder_changed_at > Date.now() - 60_000);
   await sql(`UPDATE messages SET folder_changed_at = ${Date.now() - 31 * 24 * 3600 * 1000} WHERE id = '${old.id}'`);
   check("scheduled handler runs", await runCron());
-  await new Promise((r) => setTimeout(r, 1500));
-  const left = await sql(`SELECT id FROM messages WHERE id IN ('${old.id}', '${fresh.id}')`);
+  // The cron works in waitUntil (reconcile lists R2 first), so give it time.
+  let left = [];
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    left = await sql(`SELECT id FROM messages WHERE id IN ('${old.id}', '${fresh.id}')`);
+    if (!left.some((row) => row.id === old.id)) break;
+  }
   check("trashed 31 days ago: purged", !left.some((r) => r.id === old.id));
   check("trashed today: kept", left.some((r) => r.id === fresh.id));
   await runCron();
-  await new Promise((r) => setTimeout(r, 1500));
+  await new Promise((r) => setTimeout(r, 5000));
   check("purged mail is not brought back by reconcile", (await sql(`SELECT count(*) AS n FROM messages WHERE id = '${old.id}'`))[0]?.n === 0);
 
   // A message stored without headers (as reconcile does) gets its thread when the browser indexes it.

@@ -33,11 +33,9 @@ export async function sql(query) {
 }
 
 export async function runCron() {
-  const response = await fetch(`${BASE}/cdn-cgi/local/explorer/api/local/scheduled?worker=quadmail`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ cron: "17 3 * * *" }),
-  });
+  // The dev server's own scheduled route. (The Local Explorer's scheduled dispatch used the generic
+  // top-level bindings under `vite --mode quadgentics`, so it saw an empty database.)
+  const response = await fetch(`${BASE}/cdn-cgi/handler/scheduled?cron=${encodeURIComponent("17 3 * * *")}`);
   return response.ok;
 }
 

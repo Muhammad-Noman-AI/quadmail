@@ -1,28 +1,41 @@
 {
   // Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
   "$schema": "node_modules/wrangler/config-schema.json",
+  //
+  // Top level = a generic installation, as the "Deploy to Cloudflare" button creates it: no resource IDs
+  // (Cloudflare provisions D1 and R2) and no domain settings (the setup wizard stores them in D1).
+  // The Quadgentics production installation is `env.quadgentics` below:
+  //   pnpm deploy:quadgentics   (vite build --mode quadgentics reads CLOUDFLARE_ENV from .env.quadgentics)
   "name": "quadmail",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-11-01",
   "assets": { "not_found_handling": "single-page-application", "run_worker_first": ["/api/*"] },
   "observability": { "enabled": true },
-  // Daily maintenance (reconcile, reprocess, retention). Free plan allows 5 cron triggers per account.
+  // Daily maintenance (reconcile, retention). Free plan allows 5 cron triggers per account.
   "triggers": { "crons": ["17 3 * * *"] },
-  // Non-secret config. Secrets (RESEND_API_KEY, RESEND_WEBHOOK_SECRET) go in .dev.vars locally and `wrangler secret put` in production.
-  "vars": {
-    "APP_URL": "https://quadmail.nomanu222555.workers.dev",
-    "OWNER_EMAIL": "noman@quadgentics.com",
-    "ALLOWED_SENDING_DOMAINS": "quadgentics.com",
-    "DAILY_SEND_LIMIT": "90",
-    "MAIL_PROVIDER": "resend"
-  },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "quadmail",
-      "database_id": "69b58cdf-eb43-4b1e-a83d-ef2be3433f70",
-      "migrations_dir": "migrations"
+  "vars": { "MAIL_PROVIDER": "resend" },
+  "d1_databases": [{ "binding": "DB", "database_name": "quadmail", "migrations_dir": "migrations" }],
+  "r2_buckets": [{ "binding": "MAIL" }],
+  "env": {
+    "quadgentics": {
+      "name": "quadmail",
+      // Secrets (RESEND_API_KEY, RESEND_WEBHOOK_SECRET, TOTP_ENC_KEY) are set with `wrangler secret put`.
+      "vars": {
+        "APP_URL": "https://quadmail.nomanu222555.workers.dev",
+        "OWNER_EMAIL": "noman@quadgentics.com",
+        "ALLOWED_SENDING_DOMAINS": "quadgentics.com",
+        "DAILY_SEND_LIMIT": "90",
+        "MAIL_PROVIDER": "resend"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "quadmail",
+          "database_id": "69b58cdf-eb43-4b1e-a83d-ef2be3433f70",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [{ "binding": "MAIL", "bucket_name": "quadmail-mail" }]
     }
-  ],
-  "r2_buckets": [{ "binding": "MAIL", "bucket_name": "quadmail-mail" }]
+  }
 }

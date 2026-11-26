@@ -1,18 +1,24 @@
 {
   "name": "quadmail",
+  "version": "1.0.0",
+  "description": "Your own email server and webmail on Cloudflare's free plan, with Resend for sending.",
+  "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:quadgentics": "vite --mode quadgentics",
     "build": "vite build",
-    "deploy": "vite build && wrangler deploy",
+    "deploy": "node scripts/deploy-guard.mjs && wrangler d1 migrations apply DB --remote && vite build && wrangler deploy",
+    "deploy:quadgentics": "wrangler d1 migrations apply DB --remote --env quadgentics && vite build --mode quadgentics && wrangler deploy",
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm lint && pnpm test",
     "cf-typegen": "wrangler types src/worker/worker-configuration.d.ts",
-    "db:migrate:local": "wrangler d1 migrations apply quadmail --local",
-    "db:migrate:remote": "wrangler d1 migrations apply quadmail --remote",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:quadgentics:local": "wrangler d1 migrations apply DB --local --env quadgentics",
+    "db:migrate:quadgentics": "wrangler d1 migrations apply DB --remote --env quadgentics",
     "smoke:local": "bash scripts/smoke.sh --local",
     "smoke:remote": "bash scripts/smoke.sh --remote",
     "owner:password": "node scripts/set-owner-password.ts",
@@ -22,6 +28,19 @@
     "backup:local": "node scripts/backup.ts --local",
     "icons": "node scripts/make-icons.ts",
     "seed:local": "node scripts/seed-local.ts"
+  },
+  "cloudflare": {
+    "bindings": {
+      "SETUP_CODE": {
+        "description": "Any phrase of **8 or more characters** that only you know. The setup wizard on your new QuadMail asks for it, so nobody else can claim the installation first."
+      },
+      "DB": {
+        "description": "Mail metadata, users and settings (D1, created for you)."
+      },
+      "MAIL": {
+        "description": "Raw mail and attachments (R2, created for you)."
+      }
+    }
   },
   "dependencies": {
     "dompurify": "^3.5.0",

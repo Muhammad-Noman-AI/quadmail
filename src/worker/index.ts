@@ -9,6 +9,7 @@ import { mailRoutes } from "./routes/mail";
 import { sendRoutes } from "./routes/send";
 import { setupRoutes } from "./routes/setup";
 import { domainRoutes } from "./routes/domains";
+import { versionRoutes } from "./routes/version";
 import { teamRoutes } from "./routes/team";
 import { usageRoutes } from "./routes/usage";
 import { handleScheduled } from "./scheduled";
@@ -30,6 +31,7 @@ const routes: Route[] = [
   ...usageRoutes,
   ...setupRoutes,
   ...domainRoutes,
+  ...versionRoutes,
 ];
 
 export default {

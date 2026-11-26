@@ -26,12 +26,21 @@ function Meter({ label, used, limit, format = String, note }: { label: string; u
   );
 }
 
+interface VersionInfo {
+  version: string;
+  latest: string | null;
+  updateAvailable: boolean;
+  repo: string | null;
+}
+
 export function UsagePage() {
   const [usage, setUsage] = useState<Usage | null>(null);
+  const [version, setVersion] = useState<VersionInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api<Usage>("/api/usage").then(setUsage).catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Could not load usage"));
+    api<VersionInfo>("/api/version").then(setVersion).catch(() => {});
   }, []);
 
   return (
@@ -41,6 +50,19 @@ export function UsagePage() {
           <h1 className="text-xl font-semibold">Usage</h1>
           <p className="text-sm text-neutral-600 dark:text-neutral-400">Free-tier limits for the whole team. A warning shows from 80%.</p>
         </div>
+        {version && (
+          <div className={`rounded-xl border p-4 text-sm ${version.updateAvailable ? "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950" : "border-neutral-200 dark:border-neutral-800"}`}>
+            QuadMail {version.version}
+            {version.updateAvailable ? (
+              <>
+                {" "}
+                — <b>update available: {version.latest}</b>. In your GitHub copy of QuadMail open <b>Actions → Update QuadMail → Run workflow</b>. Cloudflare then builds and deploys it.
+              </>
+            ) : version.latest ? (
+              " — up to date."
+            ) : null}
+          </div>
+        )}
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{error}</p>}
         {!usage && !error && <p className="text-sm text-neutral-400">Loading…</p>}
         {usage && (

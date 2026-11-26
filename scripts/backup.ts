@@ -3,7 +3,7 @@
 // For "undo the last few days" use D1 Time Travel instead (7 days on the free plan):
 //   pnpm exec wrangler d1 time-travel info quadmail
 //
-// Usage: node scripts/backup.ts --remote|--local [--with-mail]
+// Usage: node scripts/backup.ts --remote|--local [--with-mail] [--env quadgentics]
 // Output: backups/<target>-<timestamp>/ (gitignored). It contains password hashes and mail metadata:
 // keep it private.
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -36,7 +36,7 @@ const TABLES = [
 const PAGE = 500;
 
 function query(sql: string): Record<string, unknown>[] {
-  const out = wranglerOutput(["d1", "execute", "quadmail", target!, "--json", "--command", `"${sql}"`]);
+  const out = wranglerOutput(["d1", "execute", "DB", target!, "--json", "--command", `"${sql}"`]);
   const parsed = JSON.parse(out.slice(out.indexOf("["))) as Array<{ results: Record<string, unknown>[] }>;
   return parsed[0]?.results ?? [];
 }

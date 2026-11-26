@@ -1,0 +1,51 @@
+# Keeps a copy of QuadMail made with the "Deploy to Cloudflare" button up to date.
+# It replaces the code with the latest QuadMail release and pushes; Cloudflare Workers Builds then runs
+# the migrations and deploys. Runs every Monday and on demand (Actions → Update QuadMail → Run workflow).
+# Kept as they are: wrangler.jsonc (it holds the IDs of your D1 and R2) and .github/ (GitHub does not let
+# this workflow change workflow files). Other local code changes are replaced by the release.
+name: Update QuadMail
+
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find the latest release
+        id: release
+        run: |
+          repo=$(jq -r '.repo // ""' upstream.json)
+          if [ -z "$repo" ] || [ "$repo" = "$GITHUB_REPOSITORY" ]; then echo "Nothing to update from."; exit 0; fi
+          git fetch --depth 1 "https://github.com/${repo}.git" "refs/tags/*:refs/tags/upstream/*"
+          tag=$(git tag --list 'upstream/v*' --sort=-v:refname | head -n1)
+          if [ -z "$tag" ]; then echo "No releases yet."; exit 0; fi
+          version=${tag#upstream/v}
+          current=$(jq -r '.version' package.json)
+          if [ "$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -n1)" = "$current" ]; then echo "Already at $current."; exit 0; fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Replace the code with the release
+        if: steps.release.outputs.tag != ''
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          cp wrangler.jsonc "$RUNNER_TEMP/wrangler.jsonc"
+          cp -r .github "$RUNNER_TEMP/github"
+          git read-tree --reset -u "$TAG"
+          cp "$RUNNER_TEMP/wrangler.jsonc" wrangler.jsonc
+          rm -rf .github && cp -r "$RUNNER_TEMP/github" .github
+          git add -A
+          git config user.name "QuadMail updater"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "Update QuadMail to $VERSION"
+          git push origin HEAD
