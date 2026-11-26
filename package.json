@@ -28,7 +28,9 @@
     "backup:remote": "node scripts/backup.ts --remote",
     "backup:local": "node scripts/backup.ts --local",
     "icons": "node scripts/make-icons.ts",
-    "seed:local": "node scripts/seed-local.ts"
+    "seed:local": "node scripts/seed-local.ts",
+    "site:dev": "wrangler dev --config site/wrangler.jsonc",
+    "site:deploy": "wrangler deploy --config site/wrangler.jsonc"
   },
   "cloudflare": {
     "bindings": {

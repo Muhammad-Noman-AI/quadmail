@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QuadMail: your own email on Cloudflare, free</title>
+    <meta name="description" content="Run your own email server and webmail on your Cloudflare account, on the free plan. One-click deploy, a setup wizard, a team, and your mail stays yours." />
+    <meta property="og:title" content="QuadMail: your own email on Cloudflare, free" />
+    <meta property="og:description" content="One-click deploy to your own Cloudflare account. Receive with Email Routing, send with Resend, webmail for your whole team." />
+    <meta property="og:image" content="https://quadmail.quadgentics.com/icon-512.png" />
+    <meta name="theme-color" content="#2563eb" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="wrap row">
+        <a class="brand" href="/"><img src="/favicon.svg" alt="" width="28" height="28" /> QuadMail</a>
+        <nav>
+          <a href="#how">How it works</a>
+          <a href="#limits">Limits</a>
+          <a href="#faq">FAQ</a>
+          <a href="https://github.com/Muhammad-Noman-AI/quadmail">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="wrap">
+          <p class="eyebrow">Open source · AGPL-3.0 · Free plan friendly</p>
+          <h1>Your own email server.<br />On your Cloudflare. For free.</h1>
+          <p class="lead">
+            QuadMail gives your domain a complete mail system: receiving, sending, webmail and a team. It runs on
+            <strong>your own</strong> Cloudflare account, so your mail stays yours. Deploy with one click, then a wizard sets up the rest.
+          </p>
+          <div class="cta">
+            <a class="deploy" href="https://deploy.workers.cloudflare.com/?url=https://github.com/Muhammad-Noman-AI/quadmail">
+              <img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" height="40" />
+            </a>
+            <a class="ghost" href="https://github.com/Muhammad-Noman-AI/quadmail">View the code</a>
+          </div>
+          <p class="fine">About 20 minutes. No server, no command line.</p>
+        </div>
+      </section>
+
+      <section class="features">
+        <div class="wrap grid">
+          <article>
+            <h3>Receive everything</h3>
+            <p>Cloudflare Email Routing hands every mail for your domain to QuadMail. Catch-all included, so any address works.</p>
+          </article>
+          <article>
+            <h3>Send that lands in the inbox</h3>
+            <p>Sending through Resend with SPF, DKIM and DMARC set up for you. Delivery, bounces and complaints are tracked.</p>
+          </article>
+          <article>
+            <h3>A real webmail</h3>
+            <p>Threads, search, labels, drafts, attachments, replies and forwards. Dark mode, keyboard shortcuts, installable on your phone.</p>
+          </article>
+          <article>
+            <h3>Your whole team</h3>
+            <p>Add people with their own mailbox and password. Shared addresses like sales@. Each person sees only their own mail.</p>
+          </article>
+          <article>
+            <h3>Safe by default</h3>
+            <p>Password plus optional two-factor login. Email HTML is sanitised and shown without scripts; remote images are blocked until you allow them.</p>
+          </article>
+          <article>
+            <h3>Yours, really</h3>
+            <p>Mail, keys and passwords live in your Cloudflare account. Nobody else, including us, can read them. Updates are one button.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="how" class="steps">
+        <div class="wrap">
+          <h2>How it works</h2>
+          <ol>
+            <li>
+              <span class="num">1</span>
+              <div>
+                <h3>Deploy</h3>
+                <p>Click <b>Deploy to Cloudflare</b>. Cloudflare copies QuadMail to your GitHub, creates the database and storage, and starts it. You choose a <b>setup code</b>.</p>
+              </div>
+            </li>
+            <li>
+              <span class="num">2</span>
+              <div>
+                <h3>Set up</h3>
+                <p>Open your new QuadMail. The wizard asks for the setup code, creates your admin account, connects Resend, shows the DNS records to add, and checks them.</p>
+              </div>
+            </li>
+            <li>
+              <span class="num">3</span>
+              <div>
+                <h3>Go</h3>
+                <p>Point Email Routing's catch-all at QuadMail, send a test, add your team. New versions arrive through a weekly update in your GitHub copy.</p>
+              </div>
+            </li>
+          </ol>
+          <div class="need">
+            <h3>What you need</h3>
+            <ul>
+              <li>A domain whose DNS is on Cloudflare</li>
+              <li>A Cloudflare account (the free plan; Cloudflare may ask for a card to turn on R2 storage)</li>
+              <li>A free <a href="https://resend.com">Resend</a> account for sending</li>
+              <li>A free GitHub account</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="limits" class="limits">
+        <div class="wrap">
+          <h2>Free-plan limits</h2>
+          <p>QuadMail is built to stay inside these free limits, and its Usage page warns you at 80%.</p>
+          <table>
+            <tbody>
+              <tr><th>Sending (Resend Free)</th><td>100 mails per day, 3,000 per month, 3 domains</td></tr>
+              <tr><th>Receiving (Email Routing)</th><td>Unlimited; up to 25 MiB per mail</td></tr>
+              <tr><th>Mail storage (R2)</th><td>10 GB</td></tr>
+              <tr><th>Database (D1)</th><td>500 MB, roughly 30,000 to 50,000 messages</td></tr>
+              <tr><th>App (Workers)</th><td>100,000 requests per day</td></tr>
+            </tbody>
+          </table>
+          <p class="fine">Need more? Resend Pro raises sending to 50,000 per month; Cloudflare's paid plans raise the rest. Nothing in QuadMail changes.</p>
+        </div>
+      </section>
+
+      <section id="faq" class="faq">
+        <div class="wrap">
+          <h2>Questions</h2>
+          <details>
+            <summary>Is it really free?</summary>
+            <p>Yes, within the limits above. QuadMail itself is free software (AGPL-3.0). You use your own free Cloudflare and Resend accounts; we never bill you.</p>
+          </details>
+          <details>
+            <summary>Can Quadgentics read my mail?</summary>
+            <p>No. QuadMail runs entirely in your Cloudflare account. We have no access to it, and the setup never sends us your keys or passwords.</p>
+          </details>
+          <details>
+            <summary>Can I use Outlook or the Gmail app?</summary>
+            <p>Not yet: QuadMail is webmail and has no IMAP/SMTP. You can install it as an app on your phone or computer from the browser.</p>
+          </details>
+          <details>
+            <summary>What happens to my existing mail?</summary>
+            <p>Mail stays wherever it is now. QuadMail receives new mail from the moment you point Email Routing at it. Importing old mail is not part of version 1.</p>
+          </details>
+          <details>
+            <summary>How do updates work?</summary>
+            <p>Your GitHub copy has an <b>Update QuadMail</b> workflow. It runs every Monday (or when you press Run) and installs the latest release; Cloudflare then deploys it.</p>
+          </details>
+          <details>
+            <summary>Something went wrong. Where do I get help?</summary>
+            <p>Open an issue on <a href="https://github.com/Muhammad-Noman-AI/quadmail/issues">GitHub</a>. The README and setup guide cover the manual way too.</p>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap row">
+        <span>QuadMail by <a href="https://quadgentics.com">Quadgentics</a> · free software under AGPL-3.0</span>
+        <a href="https://github.com/Muhammad-Noman-AI/quadmail">Source on GitHub</a>
+      </div>
+    </footer>
+  </body>
+</html>
